@@ -400,20 +400,20 @@
     ) {
       return m`
       <div id="analytics">
-        <div class="admin__header analytics__header">
+        <div class="analytics__header">
           <div class="header__logo">
             <${Logo} />
           </div>
           <span>Hearald</span>
           <input
             type="text"
-            class="admin__header__input"
+            class="analytics__header__input"
             onchange=${(e) => this.changeNumDays(e)}
             value=${numDays}
           />
           <input
             type="text"
-            class="admin__header__input"
+            class="analytics__header__input"
             onchange=${(e) => this.changeDate(e)}
             value=${date}
           />

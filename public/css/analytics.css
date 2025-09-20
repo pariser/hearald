@@ -126,31 +126,6 @@ th {
   }
 }
 
-.app>* {
-  margin: 0;
-}
-
-.app {
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 2em;
-  align-items: start;
-  grid-gap: 1em;
-  position: relative;
-  color: var(--color-text);
-  min-height: 100%;
-  padding: 1em;
-  width: 100%;
-  max-width: var(--global-max-width);
-  margin: 0 auto;
-}
-
-.game {
-  display: grid;
-  gap: 2em;
-  position: relative;
-}
-
 .hidden {
   display: none !important;
 }
@@ -177,15 +152,13 @@ th {
 
 /* ---- */
 
-.admin__header {
+.analytics__header {
   grid-area: header;
   padding: 2em;
   background-color: var(--color-dark);
   display: flex;
   gap: 2em;
   align-items: center;
-}
-.analytics__header.admin__header {
   grid-template-columns: auto auto auto auto 1fr;
 }
 
@@ -369,7 +342,7 @@ th {
     --analytics-grid-columns: 1;
   }
 
-  .admin__header__input {
+  .analytics__header__input {
     width: 35%;
   }
 
