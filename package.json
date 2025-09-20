@@ -1,6 +1,6 @@
 {
   "name": "hearald",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "A single server drop-in file system based metrics and analytics library.",
   "main": "src/index.js",
   "type": "module",

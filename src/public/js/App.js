@@ -8,7 +8,7 @@ import {
   fetchChartData,
   fetchData,
 } from "./util.js";
-import Tile from "./Tile";
+import Tile from "./Tile.js";
 
 const DATE = new Date().toISOString().split("T")[0];
 

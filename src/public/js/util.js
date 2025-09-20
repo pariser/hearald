@@ -14,7 +14,6 @@ export async function getData({ n, d, q, endpointBuilder, fetchStats }) {
   const endpoint = endpointBuilder
     ? endpointBuilder(n, d, q)
     : `/data/${n}/${d}${q ? "?" + q : ""}`;
-  console.log("endpoint", endpoint);
 
   const data = await fetchStats(endpoint);
   dataCache[key] = data;

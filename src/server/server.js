@@ -1,5 +1,6 @@
 // Express middleware for hearald event tracking
 import express from "express";
+import log from "./logger.js";
 import { nowAsPstDate } from "../shared/utils.js";
 import { writeEvent, closeEventFiles } from "./serverEvents.js";
 import { createAnalyticsRouter } from "./analytics.js";
@@ -19,7 +20,7 @@ export async function shutDown() {
  * @param {function} [options.parseBody] - Custom request body parser (req => {e, u, p}).
  * @returns {function} Express middleware
  */
-export function createHearaldMiddleware({ url = "/e", parseBody } = {}) {
+export function eventEndpointMiddleware({ url = "/e", parseBody } = {}) {
   const router = express.Router();
   router.post(url, async (req, res) => {
     try {
@@ -35,14 +36,9 @@ export function createHearaldMiddleware({ url = "/e", parseBody } = {}) {
       await logEvent(nowAsPstDate(), { e, u, p });
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error("error writing event to event log", err);
+      log.error("error writing event to event log", err);
     }
     res.status(204).send();
   });
   return router;
-}
-
-export function createHearaldAnalyticsRouter(options = {}) {
-  // Pass statManifest to the analytics router so /analytics/layout.json is available
-  return createAnalyticsRouter({ ...options });
 }

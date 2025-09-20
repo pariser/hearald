@@ -1,5 +1,6 @@
 import { readFile, open as openFile, mkdir } from "fs/promises";
 
+import log from "./logger.js";
 import { iso } from "../shared/utils.js";
 
 const eventFilePromises = new Map();
@@ -81,10 +82,10 @@ export const readEventsFromFile = async (fileName) => {
   } catch (e) {
     if (e.message && e.message.indexOf("ENOENT") !== -1) {
       // eslint-disable-next-line no-console
-      console.warn(`file not found: events/${fileName}.log`);
+      log.warn(`file not found: events/${fileName}.log`);
     } else {
       // eslint-disable-next-line no-console
-      console.error(e);
+      log.error(e);
     }
     return [];
   }

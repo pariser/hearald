@@ -1,21 +1,11 @@
 # hearald
 
-A whimsical event bus and evented utility for client and server, with event tracking, error logging, and analytics/statistics helpers.
+A single server drop-in file system based metrics and analytics library.
 
-## Status (August 2025)
+## TODO
 
-- ✅ Event bus/evented logic fully extracted and modularized
-- ✅ Server-side event file logic (read/write/close/load) extracted
-- ✅ Client/server event emit logic and `/e` endpoint extracted
-- ✅ Admin stats endpoint and client fetch utility extracted
-- ✅ Analytics client helpers (iso, getData, fetchChartData, fetchData, numFormatter, dataCache) extracted
-- ✅ Client/server/shared subfolders created and migration in progress
-- ✅ Error tracking utilities and Express error middleware added
-- ✅ Integration examples and usage documentation provided
-- ✅ `.eslintrc` added to declare `Intl` as a global for linting
-- ✅ Lint passes and all functionality verified
-- ⏳ Migration of all helpers to client/server/shared nearly complete
-- ⏳ Custom event tracking, configurable stat definitions, embeddable admin UI, and further documentation/testing are next
+- top stats histogram should/could be it's own ui-configurable data type
+- top stats histogram fields should be controlled in the ui configuration settings
 
 ## Usage
 

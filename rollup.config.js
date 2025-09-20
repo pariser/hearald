@@ -40,7 +40,7 @@ function inlineAssetsPlugin({ htmlFile, outputFile }) {
 }
 
 export default {
-  input: "public/js/index.js", // Use JS entry point
+  input: "src/public/js/index.js", // Use JS entry point
   output: {
     dir: "dist",
     format: "iife",
@@ -52,7 +52,7 @@ export default {
       extract: true,
     }),
     inlineAssetsPlugin({
-      htmlFile: "public/analytics.html",
+      htmlFile: "src/public/analytics.html",
       outputFile: "analytics.html",
     }),
   ],

@@ -29,7 +29,6 @@
     const endpoint = endpointBuilder
       ? endpointBuilder(n, d, q)
       : `/data/${n}/${d}${q ? "?" + q : ""}`;
-    console.log("endpoint", endpoint);
 
     const data = await fetchStats(endpoint);
     dataCache[key] = data;
@@ -532,8 +531,6 @@
     `;
     }
   }
-
-  console.log("index.js loaded");
 
   G(m` <${App} /> `, document.getElementById("analytics-root"));
 

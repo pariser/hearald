@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { readFile, writeFile } from "fs/promises";
 import express from "express";
+import log from "./logger.js";
 import {
   omitProperties,
   iso,
@@ -234,13 +235,13 @@ export async function handleAnalyticsDataRequest({
   }
   const dataFromFile = await readMetricsFromCache(endDateIso, timeWindow);
   if (dataFromFile) {
-    console.log(
+    log.info(
       `Analytics for ${timeWindow} days ending on ${endDateIso} returned from cache`
     );
     response.status(200).type("application/json").send(dataFromFile);
     return;
   }
-  console.log(
+  log.info(
     `Analytics for ${timeWindow} days ending on ${endDateIso} computing from events`
   );
   try {
@@ -256,7 +257,7 @@ export async function handleAnalyticsDataRequest({
     );
     response.status(200).type("application/json").send(JSON.stringify(stats));
   } catch (e) {
-    console.error("failed to compute analytics", e);
+    log.error("failed to compute analytics", e);
     response
       .status(500)
       .type("application/json")
@@ -267,22 +268,15 @@ export async function handleAnalyticsDataRequest({
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-console.log("filename is", __filename);
-console.log("dirname is", __dirname);
+log.info("filename is", __filename);
+log.info("dirname is", __dirname);
 
-export function createAnalyticsRouter({
-  statDefinitions,
-  loadEventsOverWindow,
-  templateReplaceMany,
-  analyticsHtmlPath,
-  enableLiveReload,
-  environment,
-}) {
-  console.log("statManifest", statDefinitions);
+export function createAnalyticsRouter({ statDefinitions }) {
+  log.info("statManifest", statDefinitions);
   const router = express.Router();
 
   router.get(`/data/:last/:date?`, async (request, response) => {
-    console.log(chalk.cyan("[API] GET /analytics/data/:last/:date?"));
+    log.info(chalk.cyan("[API] GET /analytics/data/:last/:date?"));
     await handleAnalyticsDataRequest({
       request,
       response,
@@ -297,23 +291,10 @@ export function createAnalyticsRouter({
   });
 
   router.get(`/`, async (request, response) => {
-    console.log(chalk.cyan("[Render] views/analytics.html loading"));
-    console.log(path.join(__dirname, "..", "dist", "analytics.html"));
     const fileContents = await readFile(
-      path.join(__dirname, "..", "dist", "analytics.html")
+      path.join(__dirname, "..", "..", "dist", "analytics.html")
     );
-    const analyticsHtmlRaw = fileContents.toString("utf-8");
-    console.log("analyticsHtmlRaw", analyticsHtmlRaw);
-    const yesterday = nowAsPstDate();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const analyticsHtml = templateReplaceMany(analyticsHtmlRaw, {
-      date: yesterday.toISOString().split("T")[0],
-      devHeadExtras:
-        environment === "development" && enableLiveReload
-          ? '<script src="/liveReloading.js"></script>'
-          : "",
-    });
-    console.log("analyticsHtml", analyticsHtml);
+    const analyticsHtml = fileContents.toString("utf-8");
     response.send(analyticsHtml);
   });
 

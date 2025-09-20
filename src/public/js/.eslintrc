@@ -2,8 +2,5 @@
   "env": {
     "browser": true,
     "es2020": true
-  },
-  "globals": {
-    "INJECTED__DATE": "readonly"
   }
 }
