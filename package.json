@@ -1,8 +1,12 @@
 {
   "name": "hearald",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "A single server drop-in file system based metrics and analytics library.",
   "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./src/client.js"
+  },
   "type": "module",
   "scripts": {
     "build": "rollup --config"
