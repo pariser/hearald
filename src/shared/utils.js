@@ -1,5 +1,3 @@
-import hearaldConfiguration from "../server/configuration.js";
-
 export const pacificTimeFormatter = new Intl.DateTimeFormat("en-US", {
   weekday: "short",
   year: "numeric",
@@ -44,7 +42,7 @@ export function iso(time) {
 }
 
 export function defaultEndDate() {
-  const yesterday = hearaldConfiguration.nowFn();
+  const yesterday = nowAsPstDate();
   yesterday.setDate(yesterday.getDate() - 1);
   yesterday.setHours(0, 0, 0, 0);
   return yesterday;
