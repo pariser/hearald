@@ -1,26 +1,24 @@
-class Logger {
-  constructor(level) {
-    this.level = level || "info";
-  }
+import hearaldConfiguration from "./configuration.js";
 
-  setLogLevel(level) {
-    this.level = level;
+class Logger {
+  constructor(config = hearaldConfiguration) {
+    this.config = config;
   }
 
   debug(...args) {
-    if (this.level === "debug") {
+    if (this.config.logLevel === "debug") {
       console.log("[DEBUG]", ...args);
     }
   }
 
   info(...args) {
-    if (this.level === "debug" || this.level === "info") {
+    if (this.config.logLevel === "debug" || this.config.logLevel === "info") {
       console.log("[INFO]", ...args);
     }
   }
 
   warn(...args) {
-    if (this.level !== "error") {
+    if (this.config.logLevel !== "error") {
       console.warn("[WARN]", ...args);
     }
   }

@@ -1,13 +1,9 @@
 // Express middleware for hearald event tracking
 import express from "express";
-import log from "./logger.js";
-import { nowAsPstDate } from "../shared/utils.js";
-import { writeEvent, closeEventFiles } from "./serverEvents.js";
-import { createAnalyticsRouter } from "./analytics.js";
 
-export async function logEvent(time, event) {
-  return writeEvent(time, event);
-}
+import hearaldConfiguration from "./configuration.js";
+import log from "./logger.js";
+import { writeEvent, closeEventFiles, VISIT_EVENT } from "./serverEvents.js";
 
 export async function shutDown() {
   await closeEventFiles();
@@ -29,11 +25,11 @@ export function eventEndpointMiddleware({ url = "/e", parseBody } = {}) {
         ({ e, u, p } = parseBody(req));
       } else {
         ({ e = null, u = null, p = {} } = req.body || {});
-        if (e === "visit") {
+        if (e === VISIT_EVENT) {
           p.ip = req.ip;
         }
       }
-      await logEvent(nowAsPstDate(), { e, u, p });
+      await writeEvent(hearaldConfiguration.nowFn(), { e, u, p });
     } catch (err) {
       // eslint-disable-next-line no-console
       log.error("error writing event to event log", err);
@@ -41,4 +37,58 @@ export function eventEndpointMiddleware({ url = "/e", parseBody } = {}) {
     res.status(204).send();
   });
   return router;
+}
+
+export async function trackServerEvent({
+  event,
+  time = null,
+  userId,
+  params = {},
+}) {
+  await writeEvent(time || hearaldConfiguration.nowFn(), {
+    e: event,
+    u: userId,
+    p: params,
+  });
+}
+
+export async function trackServerError({
+  error,
+  userId = null,
+  extraParams = {},
+}) {
+  let message = "";
+  let stack = "";
+  if (error instanceof Error) {
+    message = error.message;
+    stack = error.stack || "";
+  } else if (typeof error === "string") {
+    message = error;
+  } else if (error && typeof error === "object") {
+    message = error.message || JSON.stringify(error);
+    stack = error.stack || "";
+  }
+  const params = {
+    message,
+    stack,
+    ...extraParams,
+  };
+  await writeEvent(hearaldConfiguration.nowFn(), {
+    e: ERROR_EVENT,
+    u: userId,
+    p: params,
+  });
+}
+
+// Express error-handling middleware
+export function errorTrackingMiddleware({}) {
+  // eslint-disable-next-line no-unused-vars
+  return function (err, req, res, next) {
+    trackServerError({
+      error: err,
+      userId: hearaldConfiguration.getUserId(req),
+      extraParams: { url: req.originalUrl, method: req.method, ip: req.ip },
+    });
+    next(err);
+  };
 }
