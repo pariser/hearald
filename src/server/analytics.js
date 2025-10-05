@@ -5,12 +5,8 @@ import { fileURLToPath } from "url";
 import { readFile, writeFile } from "fs/promises";
 import express from "express";
 import log from "./logger.js";
-import {
-  omitProperties,
-  iso,
-  defaultEndDate,
-  nowAsPstDate,
-} from "../shared/utils.js";
+import hearaldConfiguration from "./configuration.js";
+import { omitProperties, defaultEndDate } from "../shared/utils.js";
 import { loadEventsOverWindow } from "./serverEvents.js";
 
 export function generateRawMetrics(events, rawMetricDefinitions) {
@@ -106,7 +102,8 @@ export function generateComputedMetric(metrics, definition, timeWindow) {
 }
 
 export function cacheFilePath(endDate, timeWindow) {
-  const endDateIso = typeof endDate === "string" ? endDate : iso(endDate);
+  const endDateIso =
+    typeof endDate === "string" ? endDate : hearaldConfiguration.isoFn(endDate);
   return `events/summary:${endDateIso}:${timeWindow}.json`;
 }
 
@@ -213,7 +210,7 @@ export async function generateStats(statDefinitions, endDate, timeWindow) {
   });
   return {
     metrics: nestedMetrics,
-    endDate: iso(endDate),
+    endDate: hearaldConfiguration.isoFn(endDate),
     timeWindow,
     processedEventCount: allEvents.length,
   };
@@ -224,7 +221,7 @@ export async function handleAnalyticsDataRequest({
   response,
   statDefinitions,
 }) {
-  const defaultEndDateIso = iso(defaultEndDate(nowAsPstDate));
+  const defaultEndDateIso = hearaldConfiguration.isoFn(defaultEndDate());
   const endDateIso = request.params.date
     ? request.params.date
     : defaultEndDateIso;
@@ -282,7 +279,6 @@ export function createAnalyticsRouter({ statDefinitions }) {
       response,
       statDefinitions,
       loadEventsOverWindow,
-      nowAsPstDate,
     });
   });
 

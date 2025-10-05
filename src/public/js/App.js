@@ -303,8 +303,8 @@ class App extends Component {
                             type="${f.type}"
                             value=${deepGet(stats.metrics, f.key)}
                             span=${f.span || null}
-                            ${f.type === "percent" ? "percent" : ""}
-                            ${f.type === "histogram" ? "histogram" : ""}
+                            percent=${f.type === "percent"}
+                            histogram=${f.type === "histogram"}
                           />
                         `;
                       })}

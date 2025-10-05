@@ -10,8 +10,8 @@ export const pacificTimeFormatter = new Intl.DateTimeFormat("en-US", {
 export const pacificTimeOffsetHours = (date) =>
   pacificTimeFormatter.format(date || new Date()).endsWith("PDT") ? -7 : -8;
 
-export const dateStringToPstDate = (dateString) => {
-  const rawDate = dateString ? new Date(dateString) : new Date();
+export const nowAsPstDate = () => {
+  const rawDate = new Date();
   const offset = pacificTimeOffsetHours(rawDate);
   const pstDate = new Date();
   pstDate.setUTCFullYear(
@@ -19,11 +19,9 @@ export const dateStringToPstDate = (dateString) => {
     rawDate.getUTCMonth(),
     rawDate.getUTCDate()
   );
-  pstDate.setUTCHours(-1 * offset, 0, 0, 0);
+  pstDate.setUTCHours(-1 * offset);
   return pstDate;
 };
-
-export const nowAsPstDate = () => dateStringToPstDate();
 
 export function omitProperties(object, ...keys) {
   let rest = object;

@@ -1,0 +1,9 @@
+.env
+.data
+.DS_Store
+node_modules
+.lesshst
+.sqlite_history
+*.md
+.github
+dist/
