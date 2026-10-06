@@ -49,5 +49,12 @@
   },
   "peerDependencies": {
     "express": ">=4"
-  }
+  },
+  "files": [
+    "src",
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ]
 }

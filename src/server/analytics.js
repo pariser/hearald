@@ -109,6 +109,8 @@ export function generateComputedMetric(metrics, definition, timeWindow) {
       });
       return histogram;
     }
+    default:
+      throw new Error(`hearald: unknown formula "${definition.formula}"`);
   }
 }
 
@@ -194,7 +196,7 @@ export async function generateStats(statDefinitions, endDate, timeWindow) {
           computedMetricDefinition,
           timeWindow
         );
-        anyComputed = true;
+        anyComputed = typeof metrics[name] !== "undefined";
       }
     }
   }
@@ -236,7 +238,9 @@ export async function handleAnalyticsDataRequest({
   response,
   statDefinitions,
 }) {
-  const defaultEndDateIso = hearaldConfiguration.isoFn(defaultEndDate());
+  const defaultEndDateIso = hearaldConfiguration.isoFn(
+    defaultEndDate(hearaldConfiguration.nowFn())
+  );
   const endDateIso = request.params.date
     ? request.params.date
     : defaultEndDateIso;
@@ -255,7 +259,11 @@ export async function handleAnalyticsDataRequest({
     response.status(400).json({ error: "invalid time window" });
     return;
   }
-  const dataFromFile = await readMetricsFromCache(endDateIso, timeWindow);
+  // A window that ends today (or later) is still filling up, so it is never cached.
+  const cacheable = endDateIso < hearaldConfiguration.isoFn(hearaldConfiguration.nowFn());
+  const dataFromFile = cacheable
+    ? await readMetricsFromCache(endDateIso, timeWindow)
+    : null;
   if (dataFromFile) {
     log.info(
       `Analytics for ${timeWindow} days ending on ${endDateIso} returned from cache`
@@ -272,11 +280,13 @@ export async function handleAnalyticsDataRequest({
       new Date(endDateIso),
       timeWindow
     );
-    await writeMetricsToCache(
-      endDateIso,
-      timeWindow,
-      JSON.stringify(stats, null, 2)
-    );
+    if (cacheable) {
+      await writeMetricsToCache(
+        endDateIso,
+        timeWindow,
+        JSON.stringify(stats, null, 2)
+      );
+    }
     response.status(200).type("application/json").send(JSON.stringify(stats));
   } catch (e) {
     log.error("failed to compute analytics", e);

@@ -3,7 +3,7 @@ import assert from "node:assert";
 import { generateRawMetrics, generateStats } from "../src/server/analytics.js";
 import hearaldConfiguration from "../src/server/configuration.js";
 import { writeEvent, closeEventFiles } from "../src/server/serverEvents.js";
-import { tempDir } from "../test-support.js";
+import { tempDir } from "../harness.js";
 
 const events = [
   { e: "app_open", u: "a", p: { platform: "web" } },

@@ -10,17 +10,34 @@ export const pacificTimeFormatter = new Intl.DateTimeFormat("en-US", {
 export const pacificTimeOffsetHours = (date) =>
   pacificTimeFormatter.format(date || new Date()).endsWith("PDT") ? -7 : -8;
 
-export const nowAsPstDate = () => {
-  const rawDate = new Date();
-  const offset = pacificTimeOffsetHours(rawDate);
-  const pstDate = new Date();
-  pstDate.setUTCFullYear(
-    rawDate.getUTCFullYear(),
-    rawDate.getUTCMonth(),
-    rawDate.getUTCDate()
+// A Date whose UTC fields hold the current Pacific wall-clock time, so `iso()` (which reads UTC
+// fields) names the Pacific day. The instant it represents is not "now"; it is only for day buckets.
+export const nowAsPstDate = (now = new Date()) => {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      hourCycle: "h23",
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      second: "numeric",
+    })
+      .formatToParts(now)
+      .map((p) => [p.type, p.value])
   );
-  pstDate.setUTCHours(-1 * offset);
-  return pstDate;
+  return new Date(
+    Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second),
+      now.getMilliseconds()
+    )
+  );
 };
 
 export function omitProperties(object, ...keys) {
@@ -41,9 +58,10 @@ export function iso(time) {
   ].join("-");
 }
 
-export function defaultEndDate() {
-  const yesterday = nowAsPstDate();
-  yesterday.setDate(yesterday.getDate() - 1);
-  yesterday.setHours(0, 0, 0, 0);
+// Midnight (UTC fields) at the start of yesterday, in the same day buckets as nowAsPstDate.
+export function defaultEndDate(now = nowAsPstDate()) {
+  const yesterday = new Date(now);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  yesterday.setUTCHours(0, 0, 0, 0);
   return yesterday;
 }

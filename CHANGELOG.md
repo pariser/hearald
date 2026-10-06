@@ -31,6 +31,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `trackServerError` and the error middleware crashed with a ReferenceError (`ERROR_EVENT` was never
+  imported).
+- The log level setting did nothing: the logger was built from the string `"error"` instead of the
+  configuration. Levels now work (`debug`, `info`, `warn`, `error`); the default is `warn`.
+- Days with no events no longer log a warning for every missing file.
+- A computed metric with an unknown formula made `generateStats` loop forever; it now throws.
+- `nowAsPstDate` returned a Date with a forced hour and the UTC date, so day buckets were not Pacific
+  days. It now holds the real Pacific wall-clock time, with daylight saving. `defaultEndDate` uses
+  UTC date maths and follows the configured `nowFn` instead of the real clock.
+- Reading a window of days used local-time date maths, which could skip or repeat a day around
+  daylight saving changes on servers not set to UTC.
+- Stats for a window ending today were cached, so the dashboard showed stale numbers all day.
+- The client's `trackError` threw when the error event had no `.error` object, and calling
+  `hearald()` twice sent every event twice (the new `dispose()` and replacement fix both).
+- Without a schema, the event endpoint stored events with no name or with a non-object `p`.
 - A `set_of_users` metric that names an `event` now counts only users who sent that event (it used to
   count every user, whatever the event). A `filter` on event parameters already worked.
 - Events with no parameters or no user no longer break metric computation.

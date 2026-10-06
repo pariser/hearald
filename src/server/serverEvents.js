@@ -94,9 +94,9 @@ export const readEventsFromFile = async (fileName) => {
       })
       .filter(Boolean);
   } catch (e) {
-    if (e.message && e.message.indexOf("ENOENT") !== -1) {
-      // eslint-disable-next-line no-console
-      log.warn(`file not found: ${eventFilePath(fileName)}`);
+    if (e.code === "ENOENT") {
+      // a day with no events has no file; that is normal
+      log.debug(`no events file: ${eventFilePath(fileName)}`);
     } else {
       // eslint-disable-next-line no-console
       log.error(e);
@@ -108,8 +108,10 @@ export const readEventsFromFile = async (fileName) => {
 export const loadEventsOverWindow = async (d, n, fileSuffix) => {
   let events = [];
   for (let i = 0; i < n; i++) {
+    // `iso` reads the UTC fields, so step back in UTC too (local-time maths skips or repeats a day
+    // around daylight saving changes on servers not set to UTC)
     const newDate = new Date(d);
-    newDate.setDate(d.getDate() - i);
+    newDate.setUTCDate(d.getUTCDate() - i);
     let fileName = hearaldConfiguration.isoFn(newDate);
     if (fileSuffix) {
       fileName += `-${fileSuffix}`;

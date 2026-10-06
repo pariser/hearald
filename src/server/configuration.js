@@ -4,7 +4,7 @@ class Configuration {
   constructor({
     nowFn = nowAsPstDate,
     isoFn = iso,
-    logLevel = "info",
+    logLevel = "warn",
     getUserId = (req) => req.user?.id,
     eventsDir = "events",
   } = {}) {

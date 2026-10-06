@@ -3,7 +3,12 @@ import express from "express";
 
 import hearaldConfiguration from "./configuration.js";
 import log from "./logger.js";
-import { writeEvent, closeEventFiles, VISIT_EVENT } from "./serverEvents.js";
+import {
+  writeEvent,
+  closeEventFiles,
+  VISIT_EVENT,
+  ERROR_EVENT,
+} from "./serverEvents.js";
 import { validateEvent } from "./validate.js";
 
 export async function shutDown() {
@@ -29,8 +34,9 @@ export function eventEndpointMiddleware({ url = "/e", parseBody, schema } = {}) 
         ({ e, u, p } = parseBody(req));
       } else {
         ({ e = null, u = null, p = {} } = req.body || {});
+        if (p === null || typeof p !== "object" || Array.isArray(p)) p = {};
         if (e === VISIT_EVENT) {
-          p.ip = req.ip;
+          p = { ...p, ip: req.ip };
         }
       }
       if (schema) {
@@ -41,6 +47,10 @@ export function eventEndpointMiddleware({ url = "/e", parseBody, schema } = {}) 
           return;
         }
         ({ e, u, p } = clean);
+      }
+      if (typeof e !== "string" || !e) {
+        res.status(204).send();
+        return;
       }
       await writeEvent(hearaldConfiguration.nowFn(), { e, u, p });
     } catch (err) {

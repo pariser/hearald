@@ -20,8 +20,10 @@ const trackError = ({
   userId = null,
   payload: extraPayload = {},
 } = {}) => {
-  const errorEvent = error;
-  const errorObject = error.error;
+  // `error` is normally the ErrorEvent from window.onerror, whose `.error` can be null (for example
+  // for errors from other origins), or a plain Error.
+  const errorEvent = error || {};
+  const errorObject = errorEvent.error || (error instanceof Error ? error : {});
 
   let source;
   if (errorObject.stack) {
@@ -35,7 +37,7 @@ const trackError = ({
     eventName: "error",
     userId,
     payload: {
-      message: errorObject.message,
+      message: errorObject.message || errorEvent.message || String(error),
       source,
       file_name: errorEvent.filename || errorObject.fileName,
       line_number: errorEvent.lineno || errorObject.lineNumber,
@@ -73,13 +75,18 @@ function emitEventToServer({
   });
 }
 
+let activeListener = null;
+
 export default function hearald({
   endpoint = "/e",
-  fetchImpl = fetch,
+  fetchImpl = (...args) => globalThis.fetch(...args),
   getUserId = () => null,
   onError = () => {} /* err, eventName, userId, payload */,
 } = {}) {
-  eventBus.on("event", async (event) => {
+  // The event bus is shared, so a second call (a hot reload, say) replaces the first listener
+  // instead of sending every event twice.
+  if (activeListener) eventBus.off("event", activeListener);
+  activeListener = async (event) => {
     const { eventName, userId: emittedUserId, payload } = event;
     const userId = emittedUserId || getUserId() || null;
 
@@ -94,9 +101,14 @@ export default function hearald({
     } catch (err) {
       onError(err, eventName, userId, payload);
     }
-  });
+  };
+  eventBus.on("event", activeListener);
 
   return {
+    dispose() {
+      eventBus.off("event", activeListener);
+      activeListener = null;
+    },
     eventBus,
     trackEvent,
     trackError,
