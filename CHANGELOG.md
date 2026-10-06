@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `purgeOldEvents({ days })`: deletes logs and cached summaries older than a retention period.
 - `analytics` is only created when `statDefinitions` is given.
 
+### Changed
+
+- `express` is now a peer dependency (>=4) instead of a dependency, so the host app's Express is used.
+
 ### Fixed
 
 - A `set_of_users` metric that names an `event` now counts only users who sent that event (it used to
