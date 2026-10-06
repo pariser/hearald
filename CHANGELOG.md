@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-06
+
+### Security
+
+- **Breaking:** the analytics dashboard now needs an `auth` middleware (`analytics: { auth }`), or
+  `allowUnauthenticated: true` for local development. Before, anyone could read the stats.
+- Added `basicAuth({ verify })`: HTTP Basic auth with a lockout after repeated wrong guesses.
+- The data route now rejects dates that are not real calendar dates and time windows over 366 days
+  (the date used to become part of a file path).
+
+### Added
+
+- `eventEndpoint: { schema }`: allowed events and parameters for the public event endpoint. Events
+  not in the schema and parameters not listed are dropped, so the endpoint cannot store arbitrary text.
+- `eventsDir`: where event logs and cached summaries are kept (default `events`).
+- `purgeOldEvents({ days })`: deletes logs and cached summaries older than a retention period.
+- `analytics` is only created when `statDefinitions` is given.
+
+### Fixed
+
+- A `set_of_users` metric that names an `event` now counts only users who sent that event (it used to
+  count every user, whatever the event). A `filter` on event parameters already worked.
+- Events with no parameters or no user no longer break metric computation.
+- Open event files are tracked by full path, so changing `eventsDir` cannot reuse a stale file handle.
+
 ## [0.0.5] - 2025-10-05
 
 ### Added

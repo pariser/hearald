@@ -1,6 +1,6 @@
 {
   "name": "hearald",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "description": "A single server drop-in file system based metrics and analytics library.",
   "main": "src/index.js",
   "exports": {
@@ -9,7 +9,8 @@
   },
   "type": "module",
   "scripts": {
-    "build": "rollup --config"
+    "build": "rollup --config",
+    "test": "node --test"
   },
   "keywords": [
     "herald",

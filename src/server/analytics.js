@@ -2,12 +2,14 @@
 import chalk from "chalk";
 import path from "path";
 import { fileURLToPath } from "url";
-import { readFile, writeFile } from "fs/promises";
+import { readFile, writeFile, mkdir } from "fs/promises";
 import express from "express";
 import log from "./logger.js";
 import hearaldConfiguration from "./configuration.js";
 import { omitProperties, defaultEndDate } from "../shared/utils.js";
 import { loadEventsOverWindow } from "./serverEvents.js";
+
+const MAX_TIME_WINDOW_DAYS = 366;
 
 export function generateRawMetrics(events, rawMetricDefinitions) {
   const metrics = {};
@@ -23,7 +25,8 @@ export function generateRawMetrics(events, rawMetricDefinitions) {
     }
   );
 
-  events.forEach(({ e, p, u }) => {
+  events.forEach(({ e, p: eventParams, u }) => {
+    const p = eventParams || {};
     Object.entries(rawMetricDefinitions).forEach(
       ([name, rawMetricDefinition]) => {
         if (rawMetricDefinition.filter) {
@@ -32,13 +35,21 @@ export function generateRawMetrics(events, rawMetricDefinitions) {
           );
           if (!match) return;
         }
+        // A set_of_users metric that names an event counts only users who sent that event.
+        if (
+          rawMetricDefinition.aggregator === "set_of_users" &&
+          rawMetricDefinition.event &&
+          rawMetricDefinition.event !== e
+        ) {
+          return;
+        }
         if (
           rawMetricDefinition.aggregator === "count" &&
           rawMetricDefinition.event === e
         ) {
           metrics[name] += 1;
         } else if (rawMetricDefinition.aggregator === "set_of_users") {
-          metrics[name].add(u);
+          if (u !== null && u !== undefined) metrics[name].add(u);
         } else if (
           rawMetricDefinition.aggregator === "histogram" &&
           rawMetricDefinition.event === e
@@ -104,7 +115,10 @@ export function generateComputedMetric(metrics, definition, timeWindow) {
 export function cacheFilePath(endDate, timeWindow) {
   const endDateIso =
     typeof endDate === "string" ? endDate : hearaldConfiguration.isoFn(endDate);
-  return `events/summary:${endDateIso}:${timeWindow}.json`;
+  return path.join(
+    hearaldConfiguration.eventsDir,
+    `summary:${endDateIso}:${timeWindow}.json`
+  );
 }
 
 export async function readMetricsFromCache(endDateIso, timeWindow) {
@@ -121,6 +135,7 @@ export async function readMetricsFromCache(endDateIso, timeWindow) {
 
 export async function writeMetricsToCache(endDateIso, timeWindow, statsJson) {
   const filePath = cacheFilePath(endDateIso, timeWindow);
+  await mkdir(hearaldConfiguration.eventsDir, { recursive: true });
   return writeFile(filePath, statsJson);
 }
 
@@ -225,9 +240,19 @@ export async function handleAnalyticsDataRequest({
   const endDateIso = request.params.date
     ? request.params.date
     : defaultEndDateIso;
-  const timeWindow = parseInt(request.params.last, 10);
-  if (!timeWindow) {
-    response.status(500).json({ Error: "invalid time window" });
+  // The date becomes part of a file name, so it must be a real calendar date and nothing else.
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(endDateIso) ||
+    Number.isNaN(new Date(endDateIso).getTime())
+  ) {
+    response.status(400).json({ error: "invalid date" });
+    return;
+  }
+  const timeWindow = /^\d+$/.test(String(request.params.last))
+    ? parseInt(request.params.last, 10)
+    : 0;
+  if (!timeWindow || timeWindow > MAX_TIME_WINDOW_DAYS) {
+    response.status(400).json({ error: "invalid time window" });
     return;
   }
   const dataFromFile = await readMetricsFromCache(endDateIso, timeWindow);
@@ -268,9 +293,27 @@ const __dirname = path.dirname(__filename);
 log.info("filename is", __filename);
 log.info("dirname is", __dirname);
 
-export function createAnalyticsRouter({ statDefinitions }) {
+/**
+ * @param {Object} options
+ * @param {Object} options.statDefinitions
+ * @param {function} options.auth - Express middleware that rejects anyone who may not see the stats
+ *   (for example basicAuth from hearald). Required: the dashboard shows your usage numbers.
+ * @param {boolean} [options.allowUnauthenticated=false] - Skip `auth`. Only for local development.
+ */
+export function createAnalyticsRouter({
+  statDefinitions,
+  auth,
+  allowUnauthenticated = false,
+}) {
+  if (typeof auth !== "function" && !allowUnauthenticated) {
+    throw new Error(
+      "hearald: the analytics dashboard needs an `auth` middleware (see basicAuth), " +
+        "or allowUnauthenticated: true for local development"
+    );
+  }
   log.info("statManifest", statDefinitions);
   const router = express.Router();
+  if (typeof auth === "function") router.use(auth);
 
   router.get(`/data/:last/:date?`, async (request, response) => {
     log.info(chalk.cyan("[API] GET /analytics/data/:last/:date?"));

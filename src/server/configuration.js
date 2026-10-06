@@ -6,11 +6,13 @@ class Configuration {
     isoFn = iso,
     logLevel = "info",
     getUserId = (req) => req.user?.id,
+    eventsDir = "events",
   } = {}) {
     this.nowFn = nowFn;
     this.isoFn = isoFn;
     this.logLevel = logLevel;
     this.getUserId = getUserId;
+    this.eventsDir = eventsDir;
   }
 
   setLogLevel(level) {
@@ -23,6 +25,10 @@ class Configuration {
 
   setGetUserId(getUserId) {
     this.getUserId = getUserId;
+  }
+
+  setEventsDir(eventsDir) {
+    this.eventsDir = eventsDir;
   }
 
   setIsoFn(isoFn) {

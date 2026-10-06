@@ -4,6 +4,7 @@ import express from "express";
 import hearaldConfiguration from "./configuration.js";
 import log from "./logger.js";
 import { writeEvent, closeEventFiles, VISIT_EVENT } from "./serverEvents.js";
+import { validateEvent } from "./validate.js";
 
 export async function shutDown() {
   await closeEventFiles();
@@ -14,9 +15,12 @@ export async function shutDown() {
  * @param {Object} options
  * @param {string} [options.url='/e'] - The URL to listen for events.
  * @param {function} [options.parseBody] - Custom request body parser (req => {e, u, p}).
+ * @param {Object} [options.schema] - Allowed events and their parameters (see validate.js). When
+ *   given, events not in it, and parameters not listed, are dropped. Strongly recommended for any
+ *   endpoint that is open to the internet.
  * @returns {function} Express middleware
  */
-export function eventEndpointMiddleware({ url = "/e", parseBody } = {}) {
+export function eventEndpointMiddleware({ url = "/e", parseBody, schema } = {}) {
   const router = express.Router();
   router.post(url, async (req, res) => {
     try {
@@ -28,6 +32,15 @@ export function eventEndpointMiddleware({ url = "/e", parseBody } = {}) {
         if (e === VISIT_EVENT) {
           p.ip = req.ip;
         }
+      }
+      if (schema) {
+        const clean = validateEvent(schema, { e, u, p });
+        if (!clean) {
+          // Answer the same as for a good event, so the endpoint reveals nothing about the schema.
+          res.status(204).send();
+          return;
+        }
+        ({ e, u, p } = clean);
       }
       await writeEvent(hearaldConfiguration.nowFn(), { e, u, p });
     } catch (err) {
