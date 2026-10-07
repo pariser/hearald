@@ -3,7 +3,13 @@ import express from "express";
 
 import hearaldConfiguration from "./configuration.js";
 import log from "./logger.js";
-import { writeEvent, closeEventFiles, VISIT_EVENT } from "./serverEvents.js";
+import {
+  writeEvent,
+  closeEventFiles,
+  VISIT_EVENT,
+  ERROR_EVENT,
+} from "./serverEvents.js";
+import { validateEvent } from "./validate.js";
 
 export async function shutDown() {
   await closeEventFiles();
@@ -14,9 +20,12 @@ export async function shutDown() {
  * @param {Object} options
  * @param {string} [options.url='/e'] - The URL to listen for events.
  * @param {function} [options.parseBody] - Custom request body parser (req => {e, u, p}).
+ * @param {Object} [options.schema] - Allowed events and their parameters (see validate.js). When
+ *   given, events not in it, and parameters not listed, are dropped. Strongly recommended for any
+ *   endpoint that is open to the internet.
  * @returns {function} Express middleware
  */
-export function eventEndpointMiddleware({ url = "/e", parseBody } = {}) {
+export function eventEndpointMiddleware({ url = "/e", parseBody, schema } = {}) {
   const router = express.Router();
   router.post(url, async (req, res) => {
     try {
@@ -25,9 +34,23 @@ export function eventEndpointMiddleware({ url = "/e", parseBody } = {}) {
         ({ e, u, p } = parseBody(req));
       } else {
         ({ e = null, u = null, p = {} } = req.body || {});
+        if (p === null || typeof p !== "object" || Array.isArray(p)) p = {};
         if (e === VISIT_EVENT) {
-          p.ip = req.ip;
+          p = { ...p, ip: req.ip };
         }
+      }
+      if (schema) {
+        const clean = validateEvent(schema, { e, u, p });
+        if (!clean) {
+          // Answer the same as for a good event, so the endpoint reveals nothing about the schema.
+          res.status(204).send();
+          return;
+        }
+        ({ e, u, p } = clean);
+      }
+      if (typeof e !== "string" || !e) {
+        res.status(204).send();
+        return;
       }
       await writeEvent(hearaldConfiguration.nowFn(), { e, u, p });
     } catch (err) {
@@ -52,6 +75,15 @@ export async function trackServerEvent({
   });
 }
 
+// JSON.stringify throws on circular structures (and on BigInt); an error handler must not.
+function safeStringify(value) {
+  try {
+    return JSON.stringify(value);
+  } catch (e) {
+    return String(value);
+  }
+}
+
 export async function trackServerError({
   error,
   userId = null,
@@ -65,7 +97,7 @@ export async function trackServerError({
   } else if (typeof error === "string") {
     message = error;
   } else if (error && typeof error === "object") {
-    message = error.message || JSON.stringify(error);
+    message = error.message || safeStringify(error);
     stack = error.stack || "";
   }
   const params = {
@@ -84,11 +116,17 @@ export async function trackServerError({
 export function errorTrackingMiddleware({}) {
   // eslint-disable-next-line no-unused-vars
   return function (err, req, res, next) {
-    trackServerError({
-      error: err,
-      userId: hearaldConfiguration.getUserId(req),
-      extraParams: { url: req.originalUrl, method: req.method, ip: req.ip },
-    });
+    // Recording the error must never stop it reaching the app's own handler, nor crash the process
+    // (a failed write is a rejected promise nobody awaits).
+    try {
+      trackServerError({
+        error: err,
+        userId: hearaldConfiguration.getUserId(req),
+        extraParams: { url: req.originalUrl, method: req.method, ip: req.ip },
+      }).catch((e) => log.error("could not record the error", e));
+    } catch (e) {
+      log.error("could not record the error", e);
+    }
     next(err);
   };
 }

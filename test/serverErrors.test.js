@@ -1,0 +1,120 @@
+import test from "node:test";
+import assert from "node:assert";
+import hearald from "../src/index.js";
+import { closeEventFiles, readEventsFromFile } from "../src/server/serverEvents.js";
+import { tempDir, unusableDir, sleep, listen, jsonApp, captureErrorLog, watchUnhandledRejections } from "../harness.js";
+
+const nowFn = () => new Date("2026-11-02T12:00:00Z");
+const readErrors = async () => {
+  await closeEventFiles();
+  return readEventsFromFile("2026-11-02-errors");
+};
+
+test("trackServerError records an Error, a string and an object", async () => {
+  const h = hearald({ eventsDir: await tempDir(), nowFn, analytics: { enabled: false } });
+  await h.trackServerError({ error: new Error("disk full"), userId: "u1", extraParams: { route: "/save" } });
+  await h.trackServerError({ error: "something odd" });
+  await h.trackServerError({ error: { message: "from an object", stack: "at here" } });
+  await h.trackServerError({ error: { code: 7 } });
+  const events = await readErrors();
+  assert.deepStrictEqual(events.map((e) => e.e), ["error", "error", "error", "error"]);
+  assert.strictEqual(events[0].u, "u1");
+  assert.strictEqual(events[0].p.message, "disk full");
+  assert.match(events[0].p.stack, /disk full/);
+  assert.strictEqual(events[0].p.route, "/save");
+  assert.strictEqual(events[1].p.message, "something odd");
+  assert.strictEqual(events[1].u, null);
+  assert.deepStrictEqual([events[2].p.message, events[2].p.stack], ["from an object", "at here"]);
+  assert.strictEqual(events[3].p.message, '{"code":7}');
+});
+
+test("trackServerEvent records an event with a time and parameters", async () => {
+  const h = hearald({ eventsDir: await tempDir(), nowFn, analytics: { enabled: false } });
+  await h.trackServerEvent({ event: "job_done", userId: "system", params: { count: 3 } });
+  await h.trackServerEvent({ event: "job_done", time: new Date("2026-11-01T01:00:00Z"), userId: "system" });
+  await closeEventFiles();
+  const today = await readEventsFromFile("2026-11-02");
+  assert.deepStrictEqual({ e: today[0].e, u: today[0].u, p: today[0].p }, { e: "job_done", u: "system", p: { count: 3 } });
+  assert.strictEqual((await readEventsFromFile("2026-11-01")).length, 1);
+});
+
+test("the error middleware records the failure and passes it on", async () => {
+  const h = hearald({ eventsDir: await tempDir(), nowFn, getUserId: (req) => req.get("x-user") || null, analytics: { enabled: false } });
+  const app = jsonApp();
+  app.get("/fail", () => { throw new Error("route exploded"); });
+  app.use(h.errorMiddlware);
+  app.use((err, req, res, next) => res.status(500).json({ handled: err.message })); // eslint-disable-line no-unused-vars
+  const server = await listen(app);
+  try {
+    const res = await fetch(`${server.base}/fail?x=1`, { headers: { "x-user": "u9" } });
+    assert.strictEqual(res.status, 500);
+    assert.deepStrictEqual(await res.json(), { handled: "route exploded" }, "the error still reaches the app's own handler");
+    const [event] = await readErrors();
+    assert.strictEqual(event.u, "u9");
+    assert.strictEqual(event.p.message, "route exploded");
+    assert.strictEqual(event.p.url, "/fail?x=1");
+    assert.strictEqual(event.p.method, "GET");
+  } finally {
+    await server.close();
+  }
+});
+
+async function appWithErrorMiddleware(eventsDir, thrown) {
+  const h = hearald({ eventsDir, nowFn, analytics: { enabled: false } });
+  const app = jsonApp();
+  app.get("/fail", (req, res, next) => next(thrown));
+  app.use(h.errorMiddlware);
+  app.use((err, req, res, next) => res.status(500).json({ handled: true })); // eslint-disable-line no-unused-vars
+  return { h, app, server: await listen(app) };
+}
+
+test("an error that cannot be turned into JSON still reaches the app's handler and is recorded", async () => {
+  const circular = { code: 7 };
+  circular.self = circular;
+  const { h, server } = await appWithErrorMiddleware(await tempDir(), circular);
+  try {
+    const res = await fetch(`${server.base}/fail`);
+    assert.deepStrictEqual(await res.json(), { handled: true });
+    await h.trackServerError({ error: circular }); // direct call: must not throw either
+    const events = await readErrors();
+    assert.strictEqual(events.length, 2);
+    assert.strictEqual(events[0].p.message, "[object Object]");
+  } finally {
+    await server.close();
+  }
+});
+
+test("a failing write in the error middleware neither crashes the process nor hides the error", async () => {
+  const watcher = watchUnhandledRejections();
+  const { server } = await appWithErrorMiddleware(await unusableDir(), new Error("route exploded"));
+  try {
+    const logged = await captureErrorLog(async () => {
+      const res = await fetch(`${server.base}/fail`);
+      assert.strictEqual(res.status, 500);
+      assert.deepStrictEqual(await res.json(), { handled: true }, "the app's own handler still ran");
+      await sleep(50);
+    });
+    assert.deepStrictEqual(watcher.seen, []);
+    assert.ok(logged.length > 0, "the failure was logged");
+  } finally {
+    watcher.stop();
+    await server.close();
+  }
+});
+
+test("a getUserId that throws does not stop the error reaching the app's handler", async () => {
+  const h = hearald({ eventsDir: await tempDir(), nowFn, getUserId: () => { throw new Error("no session"); }, analytics: { enabled: false } });
+  const app = jsonApp();
+  app.get("/fail", () => { throw new Error("route exploded"); });
+  app.use(h.errorMiddlware);
+  app.use((err, req, res, next) => res.status(500).json({ handled: err.message })); // eslint-disable-line no-unused-vars
+  const server = await listen(app);
+  try {
+    await captureErrorLog(async () => {
+      const res = await fetch(`${server.base}/fail`);
+      assert.deepStrictEqual(await res.json(), { handled: "route exploded" });
+    });
+  } finally {
+    await server.close();
+  }
+});
