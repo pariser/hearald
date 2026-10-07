@@ -6,6 +6,8 @@ import hearaldClient, { eventBus } from "../src/client.js";
 globalThis.document = { referrer: "https://referrer.example/" };
 globalThis.window = { location: { toString: () => "https://app.example/page" }, innerWidth: 390, innerHeight: 700 };
 globalThis.screen = { width: 1170, height: 2532 };
+// Node 21 and later have a `navigator`; older ones (18, 20) do not
+if (!globalThis.navigator) Object.defineProperty(globalThis, "navigator", { value: { userAgent: "test-agent" }, configurable: true });
 
 function recorder({ fail = false } = {}) {
   const sent = [];
