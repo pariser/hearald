@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert";
 import hearald from "../src/index.js";
 import { closeEventFiles, readEventsFromFile } from "../src/server/serverEvents.js";
-import { tempDir, listen, jsonApp } from "../harness.js";
+import { tempDir, unusableDir, sleep, listen, jsonApp, captureErrorLog, watchUnhandledRejections } from "../harness.js";
 
 const nowFn = () => new Date("2026-11-02T12:00:00Z");
 const readErrors = async () => {
@@ -54,6 +54,66 @@ test("the error middleware records the failure and passes it on", async () => {
     assert.strictEqual(event.p.message, "route exploded");
     assert.strictEqual(event.p.url, "/fail?x=1");
     assert.strictEqual(event.p.method, "GET");
+  } finally {
+    await server.close();
+  }
+});
+
+async function appWithErrorMiddleware(eventsDir, thrown) {
+  const h = hearald({ eventsDir, nowFn, analytics: { enabled: false } });
+  const app = jsonApp();
+  app.get("/fail", (req, res, next) => next(thrown));
+  app.use(h.errorMiddlware);
+  app.use((err, req, res, next) => res.status(500).json({ handled: true })); // eslint-disable-line no-unused-vars
+  return { h, app, server: await listen(app) };
+}
+
+test("an error that cannot be turned into JSON still reaches the app's handler and is recorded", async () => {
+  const circular = { code: 7 };
+  circular.self = circular;
+  const { h, server } = await appWithErrorMiddleware(await tempDir(), circular);
+  try {
+    const res = await fetch(`${server.base}/fail`);
+    assert.deepStrictEqual(await res.json(), { handled: true });
+    await h.trackServerError({ error: circular }); // direct call: must not throw either
+    const events = await readErrors();
+    assert.strictEqual(events.length, 2);
+    assert.strictEqual(events[0].p.message, "[object Object]");
+  } finally {
+    await server.close();
+  }
+});
+
+test("a failing write in the error middleware neither crashes the process nor hides the error", async () => {
+  const watcher = watchUnhandledRejections();
+  const { server } = await appWithErrorMiddleware(await unusableDir(), new Error("route exploded"));
+  try {
+    const logged = await captureErrorLog(async () => {
+      const res = await fetch(`${server.base}/fail`);
+      assert.strictEqual(res.status, 500);
+      assert.deepStrictEqual(await res.json(), { handled: true }, "the app's own handler still ran");
+      await sleep(50);
+    });
+    assert.deepStrictEqual(watcher.seen, []);
+    assert.ok(logged.length > 0, "the failure was logged");
+  } finally {
+    watcher.stop();
+    await server.close();
+  }
+});
+
+test("a getUserId that throws does not stop the error reaching the app's handler", async () => {
+  const h = hearald({ eventsDir: await tempDir(), nowFn, getUserId: () => { throw new Error("no session"); }, analytics: { enabled: false } });
+  const app = jsonApp();
+  app.get("/fail", () => { throw new Error("route exploded"); });
+  app.use(h.errorMiddlware);
+  app.use((err, req, res, next) => res.status(500).json({ handled: err.message })); // eslint-disable-line no-unused-vars
+  const server = await listen(app);
+  try {
+    await captureErrorLog(async () => {
+      const res = await fetch(`${server.base}/fail`);
+      assert.deepStrictEqual(await res.json(), { handled: "route exploded" });
+    });
   } finally {
     await server.close();
   }

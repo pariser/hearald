@@ -49,3 +49,13 @@ test("strings are length limited", () => {
   assert.strictEqual(validateEvent({ t: { s: { type: "string" } } }, long), null);
   assert.ok(validateEvent({ t: { s: { type: "string", maxLength: 100 } } }, long));
 });
+
+test("a number that is not finite is refused, even with no min or max (JSON 1e999 parses to Infinity)", () => {
+  const schema = { ev: { n: { type: "number" } } };
+  const parsed = JSON.parse('{"n": 1e999}');
+  assert.strictEqual(parsed.n, Infinity);
+  assert.strictEqual(validateEvent(schema, { e: "ev", p: parsed }), null);
+  assert.strictEqual(validateEvent(schema, { e: "ev", p: { n: -Infinity } }), null);
+  assert.strictEqual(validateEvent(schema, { e: "ev", p: { n: NaN } }), null);
+  assert.deepStrictEqual(validateEvent(schema, { e: "ev", p: { n: 5 } }), { e: "ev", u: null, p: { n: 5 } });
+});

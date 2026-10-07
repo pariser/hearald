@@ -86,28 +86,36 @@ export default function hearald({
   // The event bus is shared, so a second call (a hot reload, say) replaces the first listener
   // instead of sending every event twice.
   if (activeListener) eventBus.off("event", activeListener);
-  activeListener = async (event) => {
+  const listener = async (event) => {
     const { eventName, userId: emittedUserId, payload } = event;
     const userId = emittedUserId || getUserId() || null;
 
     try {
-      await emitEventToServer({
+      const response = await emitEventToServer({
         endpoint,
         eventName,
         userId,
         payload,
         fetchImpl,
       });
+      // fetch only rejects on network failure; a 404 or 500 arrives as an ordinary response
+      if (response && response.ok === false) {
+        throw new Error(
+          `hearald: the server answered ${response.status} for "${eventName}"`
+        );
+      }
     } catch (err) {
       onError(err, eventName, userId, payload);
     }
   };
-  eventBus.on("event", activeListener);
+  activeListener = listener;
+  eventBus.on("event", listener);
 
   return {
+    // Removes only this instance's listener: an older instance's dispose() must not silence a newer one.
     dispose() {
-      eventBus.off("event", activeListener);
-      activeListener = null;
+      eventBus.off("event", listener);
+      if (activeListener === listener) activeListener = null;
     },
     eventBus,
     trackEvent,

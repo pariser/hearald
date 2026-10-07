@@ -59,7 +59,7 @@ test("a damaged line is skipped, the rest are read", async () => {
 test("a window reads every day, in any server time zone and across daylight saving changes", async () => {
   const dir = await tempDir();
   hearaldConfiguration.setEventsDir(dir);
-  for (const d of ["2026-03-06", "2026-03-07", "2026-03-08", "2026-03-09", "2026-11-01", "2026-10-31", "2026-10-30"]) {
+  for (const d of ["2026-03-06", "2026-03-07", "2026-03-08", "2026-03-09", "2026-11-01", "2026-10-31", "2026-10-30", "2026-11-02", "2026-11-03"]) {
     await writeFile(join(dir, `${d}.log`), `${JSON.stringify({ e: "x", u: d })}\n`);
   }
   const original = process.env.TZ;
@@ -70,6 +70,9 @@ test("a window reads every day, in any server time zone and across daylight savi
       assert.deepStrictEqual(spring.map((e) => e.u).sort(), ["2026-03-06", "2026-03-07", "2026-03-08", "2026-03-09"], tz);
       const fall = await loadEventsOverWindow(new Date("2026-11-01T00:00:00Z"), 3);
       assert.deepStrictEqual(fall.map((e) => e.u).sort(), ["2026-10-30", "2026-10-31", "2026-11-01"], tz);
+      // the old local-time maths skipped Nov 1 here when the server ran on Pacific time
+      const after = await loadEventsOverWindow(new Date("2026-11-03T00:00:00Z"), 3);
+      assert.deepStrictEqual(after.map((e) => e.u).sort(), ["2026-11-01", "2026-11-02", "2026-11-03"], tz);
     }
   } finally {
     if (original === undefined) delete process.env.TZ;

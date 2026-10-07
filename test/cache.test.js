@@ -3,6 +3,7 @@ import assert from "node:assert";
 import { readdir } from "fs/promises";
 import hearald from "../src/index.js";
 import { closeEventFiles, writeEvent } from "../src/server/serverEvents.js";
+import { nowAsPstDate } from "../src/shared/utils.js";
 import { tempDir, listen, jsonApp } from "../harness.js";
 
 const statDefinitions = {
@@ -29,7 +30,9 @@ test("a finished day is computed once, then served from the cache", async () => 
     await writeEvent(new Date("2026-11-01T13:00:00Z"), { e: "app_open", u: "b", p: {} });
     await closeEventFiles();
     assert.strictEqual((await get("/data/1/2026-11-01")).body.metrics.opens, 1, "the second answer came from the cache");
-    assert.deepStrictEqual(await readdir(eventsDir).then((f) => f.filter((x) => x.startsWith("summary"))), ["summary:2026-11-01:1.json"]);
+    const summaries = await readdir(eventsDir).then((f) => f.filter((x) => x.startsWith("summary")));
+    assert.strictEqual(summaries.length, 1);
+    assert.match(summaries[0], /^summary:2026-11-01:1:[0-9a-f]{8}\.json$/);
   } finally {
     await server.close();
   }
@@ -51,7 +54,7 @@ test("today, and days still to come, are never cached", async () => {
   }
 });
 
-test("with no date, the window ends yesterday (Pacific)", async () => {
+test("with no date, the window ends yesterday by the configured clock", async () => {
   const { server, get } = await setup("2026-11-10T12:00:00Z");
   try {
     await writeEvent(new Date("2026-11-09T12:00:00Z"), { e: "app_open", u: "a", p: {} });
@@ -59,6 +62,21 @@ test("with no date, the window ends yesterday (Pacific)", async () => {
     const res = await get("/data/1");
     assert.strictEqual(res.body.endDate, "2026-11-09");
     assert.strictEqual(res.body.metrics.opens, 1);
+  } finally {
+    await server.close();
+  }
+});
+
+test("with the default clock, yesterday is the Pacific yesterday", async () => {
+  // 03:00 UTC on Nov 10 is still the evening of Nov 9 in Pacific time, so yesterday is Nov 8
+  const eventsDir = await tempDir();
+  const h = hearald({ eventsDir, nowFn: () => nowAsPstDate(new Date("2026-11-10T03:00:00Z")), analytics: { statDefinitions, allowUnauthenticated: true } });
+  const app = jsonApp();
+  app.use("/analytics", h.analyticsMiddleware);
+  const server = await listen(app);
+  try {
+    const res = await (await fetch(`${server.base}/analytics/data/1`)).json();
+    assert.strictEqual(res.endDate, "2026-11-08");
   } finally {
     await server.close();
   }

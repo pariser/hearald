@@ -63,3 +63,24 @@ test("omitProperties returns a copy without the named keys", () => {
   assert.deepStrictEqual(omitProperties(source, "a", "c", "missing"), { b: 2 });
   assert.deepStrictEqual(source, { a: 1, b: 2, c: 3 });
 });
+
+test("defaultEndDate gives the same day in any server time zone, also across daylight saving changes", () => {
+  const original = process.env.TZ;
+  const cases = [
+    ["2026-11-02T00:30:00Z", "2026-11-01T00:00:00.000Z"], // the day after clocks fall back in the US
+    ["2026-03-09T00:30:00Z", "2026-03-08T00:00:00.000Z"], // the day clocks spring forward in the US
+    ["2026-03-29T00:30:00Z", "2026-03-28T00:00:00.000Z"], // Europe
+    ["2026-10-05T00:30:00Z", "2026-10-04T00:00:00.000Z"], // Sydney
+  ];
+  try {
+    for (const tz of ["UTC", "America/Los_Angeles", "Europe/London", "Australia/Sydney", "Pacific/Auckland"]) {
+      process.env.TZ = tz;
+      for (const [now, expected] of cases) {
+        assert.strictEqual(defaultEndDate(new Date(now)).toISOString(), expected, `${tz} ${now}`);
+      }
+    }
+  } finally {
+    if (original === undefined) delete process.env.TZ;
+    else process.env.TZ = original;
+  }
+});

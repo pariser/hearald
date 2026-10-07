@@ -75,6 +75,15 @@ export async function trackServerEvent({
   });
 }
 
+// JSON.stringify throws on circular structures (and on BigInt); an error handler must not.
+function safeStringify(value) {
+  try {
+    return JSON.stringify(value);
+  } catch (e) {
+    return String(value);
+  }
+}
+
 export async function trackServerError({
   error,
   userId = null,
@@ -88,7 +97,7 @@ export async function trackServerError({
   } else if (typeof error === "string") {
     message = error;
   } else if (error && typeof error === "object") {
-    message = error.message || JSON.stringify(error);
+    message = error.message || safeStringify(error);
     stack = error.stack || "";
   }
   const params = {
@@ -107,11 +116,17 @@ export async function trackServerError({
 export function errorTrackingMiddleware({}) {
   // eslint-disable-next-line no-unused-vars
   return function (err, req, res, next) {
-    trackServerError({
-      error: err,
-      userId: hearaldConfiguration.getUserId(req),
-      extraParams: { url: req.originalUrl, method: req.method, ip: req.ip },
-    });
+    // Recording the error must never stop it reaching the app's own handler, nor crash the process
+    // (a failed write is a rejected promise nobody awaits).
+    try {
+      trackServerError({
+        error: err,
+        userId: hearaldConfiguration.getUserId(req),
+        extraParams: { url: req.originalUrl, method: req.method, ip: req.ip },
+      }).catch((e) => log.error("could not record the error", e));
+    } catch (e) {
+      log.error("could not record the error", e);
+    }
     next(err);
   };
 }

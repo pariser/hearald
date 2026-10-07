@@ -1,15 +1,44 @@
 // Analytics router and helpers for hearald
 import chalk from "chalk";
 import path from "path";
+import { createHash } from "crypto";
 import { fileURLToPath } from "url";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import express from "express";
 import log from "./logger.js";
 import hearaldConfiguration from "./configuration.js";
-import { omitProperties, defaultEndDate } from "../shared/utils.js";
-import { loadEventsOverWindow } from "./serverEvents.js";
+import { omitProperties, defaultEndDate, iso } from "../shared/utils.js";
+import { loadEventsOverWindow, windowBytes } from "./serverEvents.js";
+import { asyncHandler } from "./asyncHandler.js";
 
 const MAX_TIME_WINDOW_DAYS = 366;
+
+// Bump when the way numbers are computed or stored changes, so summaries cached by an older version
+// are not served.
+const CACHE_FORMAT_VERSION = 1;
+
+// Thrown when a window's event files are bigger than the memory budget.
+export class WindowTooLargeError extends Error {
+  constructor(bytes, limit) {
+    super(`window too large (${bytes} bytes of events, the limit is ${limit})`);
+    this.name = "WindowTooLargeError";
+  }
+}
+
+// Computing stats holds a whole window of events in memory, so run one computation at a time: with
+// several at once, memory use multiplies.
+let queue = Promise.resolve();
+export function runExclusive(task) {
+  const result = queue.then(task);
+  queue = result.catch(() => {});
+  return result;
+}
+
+// A histogram value is a string, number or boolean. 0, false and "" are real values.
+const histogramValue = (params, field) => {
+  const value = params ? params[field] : undefined;
+  return ["string", "number", "boolean"].includes(typeof value) ? value : null;
+};
 
 export function generateRawMetrics(events, rawMetricDefinitions) {
   const metrics = {};
@@ -20,7 +49,8 @@ export function generateRawMetrics(events, rawMetricDefinitions) {
       } else if (rawMetricDefinition.aggregator === "set_of_users") {
         metrics[name] = new Set();
       } else if (rawMetricDefinition.aggregator === "histogram") {
-        metrics[name] = {};
+        // no prototype, so a value named "constructor" or "__proto__" is just a key
+        metrics[name] = Object.create(null);
       }
     }
   );
@@ -54,8 +84,7 @@ export function generateRawMetrics(events, rawMetricDefinitions) {
           rawMetricDefinition.aggregator === "histogram" &&
           rawMetricDefinition.event === e
         ) {
-          const field = rawMetricDefinition.field;
-          const value = p && p[field] ? p[field] : null;
+          const value = histogramValue(p, rawMetricDefinition.field);
           if (value !== null) {
             metrics[name][value] = (metrics[name][value] || 0) + 1;
           }
@@ -99,44 +128,69 @@ export function generateComputedMetric(metrics, definition, timeWindow) {
       // Compute histogram for given event type and field
       const sourceEvent = definition.source;
       const field = definition.field;
-      const histogram = {};
+      const histogram = Object.create(null);
       // Find all events of the given type
       (metrics._allEvents || []).forEach((ev) => {
-        if (ev.e === sourceEvent && ev.p && ev.p[field]) {
-          const value = ev.p[field];
+        const value = ev.e === sourceEvent ? histogramValue(ev.p, field) : null;
+        if (value !== null) {
           histogram[value] = (histogram[value] || 0) + 1;
         }
       });
-      return histogram;
+      // back to a plain object (fromEntries keeps a "__proto__" key as an ordinary key)
+      return Object.fromEntries(Object.entries(histogram));
     }
     default:
       throw new Error(`hearald: unknown formula "${definition.formula}"`);
   }
 }
 
-export function cacheFilePath(endDate, timeWindow) {
+// A short fingerprint of what the numbers depend on: the metric definitions (not `ui`) and the
+// format version. Changing a definition must not serve summaries computed with the old one.
+export function cacheKey(statDefinitions) {
+  return createHash("sha1")
+    .update(
+      JSON.stringify([
+        CACHE_FORMAT_VERSION,
+        statDefinitions.raw_metrics,
+        statDefinitions.computed_metrics,
+      ])
+    )
+    .digest("hex")
+    .slice(0, 8);
+}
+
+export function cacheFilePath(endDate, timeWindow, statDefinitions) {
   const endDateIso =
     typeof endDate === "string" ? endDate : hearaldConfiguration.isoFn(endDate);
   return path.join(
     hearaldConfiguration.eventsDir,
-    `summary:${endDateIso}:${timeWindow}.json`
+    `summary:${endDateIso}:${timeWindow}:${cacheKey(statDefinitions)}.json`
   );
 }
 
-export async function readMetricsFromCache(endDateIso, timeWindow) {
-  const filePath = cacheFilePath(endDateIso, timeWindow);
+export async function readMetricsFromCache(
+  endDateIso,
+  timeWindow,
+  statDefinitions
+) {
+  const filePath = cacheFilePath(endDateIso, timeWindow, statDefinitions);
   try {
     return (await readFile(filePath)).toString("utf8");
   } catch (e) {
-    if (e.message.indexOf("ENOENT") !== -1) {
+    if (e.code === "ENOENT") {
       return null;
     }
     throw e;
   }
 }
 
-export async function writeMetricsToCache(endDateIso, timeWindow, statsJson) {
-  const filePath = cacheFilePath(endDateIso, timeWindow);
+export async function writeMetricsToCache(
+  endDateIso,
+  timeWindow,
+  statsJson,
+  statDefinitions
+) {
+  const filePath = cacheFilePath(endDateIso, timeWindow, statDefinitions);
   await mkdir(hearaldConfiguration.eventsDir, { recursive: true });
   return writeFile(filePath, statsJson);
 }
@@ -151,8 +205,17 @@ export async function generateStats(statDefinitions, endDate, timeWindow) {
     if (def.source_file_suffix) fileSuffixes.add(def.source_file_suffix);
   });
 
+  // Refuse a window too big for memory before reading any of it
+  let bytes = 0;
+  for (const suffix of fileSuffixes) {
+    bytes += await windowBytes(endDate, timeWindow, suffix || undefined);
+  }
+  if (bytes > hearaldConfiguration.maxWindowBytes) {
+    throw new WindowTooLargeError(bytes, hearaldConfiguration.maxWindowBytes);
+  }
+
   // Load events from all relevant files for raw metrics
-  let allEvents = [];
+  let processedEventCount = 0;
   const eventsBySuffix = {};
   for (const suffix of fileSuffixes) {
     const events = await loadEventsOverWindow(
@@ -160,7 +223,7 @@ export async function generateStats(statDefinitions, endDate, timeWindow) {
       timeWindow,
       suffix || undefined
     );
-    allEvents = allEvents.concat(events);
+    processedEventCount += events.length;
     eventsBySuffix[suffix || ""] = events;
   }
 
@@ -173,8 +236,18 @@ export async function generateStats(statDefinitions, endDate, timeWindow) {
     ];
   });
 
-  // Store all events for computed metrics
-  metrics._allEvents = allEvents;
+  // Only a computed histogram reads the raw events, so only then keep them all together
+  if (
+    Object.values(computedMetricDefinitions).some(
+      (def) => def.formula === "histogram"
+    )
+  ) {
+    const allEvents = [];
+    for (const events of Object.values(eventsBySuffix)) {
+      for (const event of events) allEvents.push(event);
+    }
+    metrics._allEvents = allEvents;
+  }
 
   let anyComputed = true;
   while (anyComputed) {
@@ -229,7 +302,7 @@ export async function generateStats(statDefinitions, endDate, timeWindow) {
     metrics: nestedMetrics,
     endDate: hearaldConfiguration.isoFn(endDate),
     timeWindow,
-    processedEventCount: allEvents.length,
+    processedEventCount,
   };
 }
 
@@ -244,10 +317,12 @@ export async function handleAnalyticsDataRequest({
   const endDateIso = request.params.date
     ? request.params.date
     : defaultEndDateIso;
-  // The date becomes part of a file name, so it must be a real calendar date and nothing else.
+  // The date becomes part of a file name, so it must be a real calendar date and nothing else. The
+  // round trip rejects dates like 2026-02-31, which Date would quietly move to March.
   if (
     !/^\d{4}-\d{2}-\d{2}$/.test(endDateIso) ||
-    Number.isNaN(new Date(endDateIso).getTime())
+    Number.isNaN(new Date(`${endDateIso}T00:00:00Z`).getTime()) ||
+    iso(new Date(`${endDateIso}T00:00:00Z`)) !== endDateIso
   ) {
     response.status(400).json({ error: "invalid date" });
     return;
@@ -260,35 +335,57 @@ export async function handleAnalyticsDataRequest({
     return;
   }
   // A window that ends today (or later) is still filling up, so it is never cached.
-  const cacheable = endDateIso < hearaldConfiguration.isoFn(hearaldConfiguration.nowFn());
-  const dataFromFile = cacheable
-    ? await readMetricsFromCache(endDateIso, timeWindow)
-    : null;
-  if (dataFromFile) {
+  const cacheable =
+    endDateIso < hearaldConfiguration.isoFn(hearaldConfiguration.nowFn());
+  const sendCached = (json) => {
     log.info(
       `Analytics for ${timeWindow} days ending on ${endDateIso} returned from cache`
     );
-    response.status(200).type("application/json").send(dataFromFile);
+    response.status(200).type("application/json").send(json);
+  };
+  const dataFromFile = cacheable
+    ? await readMetricsFromCache(endDateIso, timeWindow, statDefinitions)
+    : null;
+  if (dataFromFile) {
+    sendCached(dataFromFile);
     return;
   }
-  log.info(
-    `Analytics for ${timeWindow} days ending on ${endDateIso} computing from events`
-  );
   try {
-    const stats = await generateStats(
-      statDefinitions,
-      new Date(endDateIso),
-      timeWindow
-    );
-    if (cacheable) {
-      await writeMetricsToCache(
-        endDateIso,
-        timeWindow,
-        JSON.stringify(stats, null, 2)
+    const stats = await runExclusive(async () => {
+      // someone ahead of us in the queue may just have computed this same window
+      const cached = cacheable
+        ? await readMetricsFromCache(endDateIso, timeWindow, statDefinitions)
+        : null;
+      if (cached) return { cached };
+      log.info(
+        `Analytics for ${timeWindow} days ending on ${endDateIso} computing from events`
       );
+      const computed = await generateStats(
+        statDefinitions,
+        new Date(`${endDateIso}T00:00:00Z`),
+        timeWindow
+      );
+      if (cacheable) {
+        await writeMetricsToCache(
+          endDateIso,
+          timeWindow,
+          JSON.stringify(computed, null, 2),
+          statDefinitions
+        );
+      }
+      return { computed };
+    });
+    if (stats.cached) {
+      sendCached(stats.cached);
+      return;
     }
-    response.status(200).type("application/json").send(JSON.stringify(stats));
+    response.status(200).type("application/json").send(JSON.stringify(stats.computed));
   } catch (e) {
+    if (e instanceof WindowTooLargeError) {
+      log.warn(e.message);
+      response.status(413).json({ error: "window too large" });
+      return;
+    }
     log.error("failed to compute analytics", e);
     response
       .status(500)
@@ -325,27 +422,34 @@ export function createAnalyticsRouter({
   const router = express.Router();
   if (typeof auth === "function") router.use(auth);
 
-  router.get(`/data/:last/:date?`, async (request, response) => {
-    log.info(chalk.cyan("[API] GET /analytics/data/:last/:date?"));
-    await handleAnalyticsDataRequest({
-      request,
-      response,
-      statDefinitions,
-      loadEventsOverWindow,
-    });
-  });
+  // Two routes rather than an optional `:date?`, which Express 5 (path-to-regexp 8) rejects.
+  // asyncHandler sends a failed read to the error handler; Express 4 would crash on it.
+  router.get(
+    ["/data/:last", "/data/:last/:date"],
+    asyncHandler(async (request, response) => {
+      log.info(chalk.cyan("[API] GET /analytics/data/:last/:date?"));
+      await handleAnalyticsDataRequest({
+        request,
+        response,
+        statDefinitions,
+      });
+    })
+  );
 
-  router.get(`/layout`, async (req, res) => {
+  router.get(`/layout`, (req, res) => {
     res.json(statDefinitions.ui || {});
   });
 
-  router.get(`/`, async (request, response) => {
-    const fileContents = await readFile(
-      path.join(__dirname, "..", "..", "dist", "analytics.html")
-    );
-    const analyticsHtml = fileContents.toString("utf-8");
-    response.send(analyticsHtml);
-  });
+  router.get(
+    `/`,
+    asyncHandler(async (request, response) => {
+      const fileContents = await readFile(
+        path.join(__dirname, "..", "..", "dist", "analytics.html")
+      );
+      const analyticsHtml = fileContents.toString("utf-8");
+      response.send(analyticsHtml);
+    })
+  );
 
   return router;
 }

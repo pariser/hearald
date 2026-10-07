@@ -98,7 +98,8 @@ test("the dashboard sits behind basic auth, and its parameters are checked", asy
     assert.strictEqual((await get("/data/7/not-a-date", good)).status, 400);
     assert.strictEqual((await get("/data/7/..%2F..%2Fetc%2Fpasswd", good)).status, 400);
     const files = await readdir(eventsDir);
-    assert.deepStrictEqual(files, ["summary:2026-11-01:7.json"], "only the valid request wrote a cache file");
+    assert.strictEqual(files.length, 1, "only the valid request wrote a cache file");
+    assert.match(files[0], /^summary:2026-11-01:7:[0-9a-f]{8}\.json$/);
   } finally {
     await server.close();
   }
@@ -132,7 +133,50 @@ test("purgeOldEvents removes logs and cached summaries older than the retention 
   assert.strictEqual(removed, 3);
   assert.deepStrictEqual((await readdir(eventsDir)).sort(), ["2026-10-30.log", "notes.txt", "summary:2026-10-30:7.json"]);
   await assert.rejects(() => purgeOldEvents({ days: 0 }), /whole number/);
-  assert.strictEqual(await purgeOldEvents({ days: 5, now: new Date() }) >= 0, true);
+});
+
+test("purgeOldEvents keeps the file dated exactly `days` ago and removes the one before, summaries included", async () => {
+  const eventsDir = await tempDir();
+  hearaldConfiguration.setEventsDir(eventsDir);
+  await mkdir(eventsDir, { recursive: true });
+  // now is Nov 2, so 5 days ago is Oct 28
+  const names = ["2026-10-27.log", "2026-10-28.log", "2026-10-27-errors.log", "summary:2026-10-27:7:0123abcd.json", "summary:2026-10-28:7:0123abcd.json", "summary:2026-10-27:7.json"];
+  for (const name of names) await writeFile(join(eventsDir, name), "x");
+  assert.strictEqual(await purgeOldEvents({ days: 5, now: new Date("2026-11-02T12:00:00Z") }), 4);
+  assert.deepStrictEqual((await readdir(eventsDir)).sort(), ["2026-10-28.log", "summary:2026-10-28:7:0123abcd.json"]);
+});
+
+test("purgeOldEvents counts days with the configured clock when no `now` is given", async () => {
+  const eventsDir = await tempDir();
+  const h = hearald({ eventsDir, nowFn: () => new Date("2026-11-02T12:00:00Z"), analytics: { enabled: false } });
+  await mkdir(eventsDir, { recursive: true });
+  for (const name of ["2026-10-27.log", "2026-10-28.log"]) await writeFile(join(eventsDir, name), "x");
+  assert.strictEqual(await h.purgeOldEvents({ days: 5 }), 1);
+  assert.deepStrictEqual(await readdir(eventsDir), ["2026-10-28.log"]);
+  assert.strictEqual(await h.purgeOldEvents({ days: 5 }), 0, "nothing more to remove");
+});
+
+test("purgeOldEvents counts whole UTC days, in any server time zone", async () => {
+  const original = process.env.TZ;
+  try {
+    for (const tz of ["UTC", "America/Los_Angeles", "Europe/London", "Pacific/Auckland"]) {
+      process.env.TZ = tz;
+      const eventsDir = await tempDir();
+      hearaldConfiguration.setEventsDir(eventsDir);
+      for (const name of ["2026-10-29.log", "2026-10-30.log"]) await writeFile(join(eventsDir, name), "x");
+      // 3 days before Nov 2 is Oct 30; with local-time maths on Pacific time this came out as Oct 29
+      assert.strictEqual(await purgeOldEvents({ days: 3, now: new Date("2026-11-02T00:30:00Z") }), 1, tz);
+      assert.deepStrictEqual(await readdir(eventsDir), ["2026-10-30.log"], tz);
+    }
+  } finally {
+    if (original === undefined) delete process.env.TZ;
+    else process.env.TZ = original;
+  }
+});
+
+test("purgeOldEvents on a directory that does not exist removes nothing", async () => {
+  hearaldConfiguration.setEventsDir(join(await tempDir(), "missing"));
+  assert.strictEqual(await purgeOldEvents({ days: 5 }), 0);
 });
 
 test("without a schema, junk is dropped and visits get the caller's address", async () => {

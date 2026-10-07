@@ -19,6 +19,8 @@ export default function hearald({
   nowFn /* () => nowAsDateString */,
   getUserId /* (req) => userId */,
   eventsDir /* where event logs are kept; default "events" */,
+  idleCloseMs /* how long an event file stays open after its last write; default 60000 */,
+  maxWindowBytes /* the most event-log bytes one dashboard request may read; default 64 MB */,
 
   eventEndpoint: { url = "/e", parseBody, schema } = {},
   analytics: {
@@ -39,6 +41,13 @@ export default function hearald({
   }
   if (eventsDir) {
     hearaldConfiguration.setEventsDir(eventsDir);
+  }
+
+  if (idleCloseMs !== undefined) {
+    hearaldConfiguration.setIdleCloseMs(idleCloseMs);
+  }
+  if (maxWindowBytes !== undefined) {
+    hearaldConfiguration.setMaxWindowBytes(maxWindowBytes);
   }
 
   const eventMiddleware = eventEndpointMiddleware({ url, parseBody, schema });

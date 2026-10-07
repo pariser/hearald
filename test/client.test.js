@@ -119,3 +119,44 @@ test("after dispose, nothing is sent", async () => {
   assert.strictEqual(r.sent.length, 0);
   assert.strictEqual(eventBus.listeners.event?.size ?? 0, 0);
 });
+
+test("a 404 or 500 from the server goes to onError, and never throws", async () => {
+  for (const status of [404, 500, 403]) {
+    const errors = [];
+    const h = hearaldClient({
+      fetchImpl: async () => ({ ok: false, status }),
+      onError: (...a) => errors.push(a),
+    });
+    h.trackEvent({ eventName: "x", userId: "u", payload: { k: 1 } });
+    await settle();
+    assert.strictEqual(errors.length, 1, String(status));
+    assert.match(errors[0][0].message, new RegExp(String(status)));
+    assert.deepStrictEqual(errors[0].slice(1), ["x", "u", { k: 1 }]);
+    h.dispose();
+  }
+});
+
+test("a good answer (204) is not an error", async () => {
+  const errors = [];
+  const h = hearaldClient({ fetchImpl: async () => ({ ok: true, status: 204 }), onError: (...a) => errors.push(a) });
+  h.trackEvent({ eventName: "x" });
+  await settle();
+  assert.deepStrictEqual(errors, []);
+  h.dispose();
+});
+
+test("disposing an old client does not silence the one that replaced it", async () => {
+  const first = recorder();
+  const second = recorder();
+  const h1 = hearaldClient({ fetchImpl: first.fetchImpl });
+  const h2 = hearaldClient({ fetchImpl: second.fetchImpl });
+  h1.dispose();
+  h2.trackEvent({ eventName: "still-sent" });
+  await settle();
+  assert.strictEqual(second.sent.length, 1, "the newer client keeps sending, once");
+  assert.strictEqual(first.sent.length, 0, "the replaced client does not");
+  h2.dispose();
+  h2.trackEvent({ eventName: "after-dispose" });
+  await settle();
+  assert.strictEqual(second.sent.length, 1, "a disposed client stops");
+});
