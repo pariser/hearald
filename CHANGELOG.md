@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-09
+
+### Fixed
+
+- The dashboard threw errors the first time it loaded with no data (`Cannot read properties of
+  undefined (reading 'map')` and `(reading 'users')`). It now shows zeros and empty menus when there
+  are no events, no metrics for the chosen chart context, or no `ui` layout.
+
+### Added
+
+- Tests that render the dashboard in a fake browser (happy-dom) against a real hearald router.
+
 ## [0.1.0] - 2026-10-07
 
 ### Security
@@ -117,7 +129,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of Hearald
 
-[Unreleased]: https://github.com/pariser/hearald/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/pariser/hearald/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/pariser/hearald/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/pariser/hearald/compare/v0.0.5...v0.1.0
 [0.0.5]: https://github.com/pariser/hearald/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/pariser/hearald/compare/v0.0.3...v0.0.4
