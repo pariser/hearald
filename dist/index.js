@@ -63,7 +63,7 @@
       onLoadProgress(i, n);
 
       const json = await getDataFn({ n: 1, d: iso(day) });
-      const v = json.metrics[context][field] || 0;
+      const v = json?.metrics?.[context]?.[field] || 0;
 
       data.unshift({ date: iso(day), value: v });
       max = Math.max(max, v);
@@ -289,14 +289,14 @@
       fetchStats: getJson,
     });
 
-  let UI = [];
+  let UI = {};
 
   async function fetchUI() {
     try {
       const res = await fetch(window.location.href + "/layout");
-      UI = await res.json();
+      UI = (await res.json()) || {};
     } catch (e) {
-      UI = [];
+      UI = {};
     }
   }
 
@@ -432,7 +432,7 @@
                         name="context"
                         onchange=${(e) => this.changeChartContext(e)}
                       >
-                        ${UI.chartContexts.map(
+                        ${(UI.chartContexts || []).map(
                           ({ id, menuName }) =>
                             m`
                               <option
@@ -501,7 +501,7 @@
                     `}
                   </div>
                 </section>
-                ${UI.sections.map((statsSection) => {
+                ${(UI.sections || []).map((statsSection) => {
                   return m`
                     <section class="analytics analytics--${statsSection.id}">
                       ${statsSection.menuName !== "" &&

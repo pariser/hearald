@@ -48,7 +48,7 @@ export async function fetchChartData({
     onLoadProgress(i, n);
 
     const json = await getDataFn({ n: 1, d: iso(day) });
-    const v = json.metrics[context][field] || 0;
+    const v = json?.metrics?.[context]?.[field] || 0;
 
     data.unshift({ date: iso(day), value: v });
     max = Math.max(max, v);
