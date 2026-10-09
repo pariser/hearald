@@ -75,14 +75,14 @@ const getDataFn = ({ n, d, q }) =>
     fetchStats: getJson,
   });
 
-let UI = [];
+let UI = {};
 
 async function fetchUI() {
   try {
     const res = await fetch(window.location.href + "/layout");
-    UI = await res.json();
+    UI = (await res.json()) || {};
   } catch (e) {
-    UI = [];
+    UI = {};
   }
 }
 
@@ -218,7 +218,7 @@ class App extends Component {
                         name="context"
                         onchange=${(e) => this.changeChartContext(e)}
                       >
-                        ${UI.chartContexts.map(
+                        ${(UI.chartContexts || []).map(
                           ({ id, menuName }) =>
                             html`
                               <option
@@ -287,7 +287,7 @@ class App extends Component {
                     `}
                   </div>
                 </section>
-                ${UI.sections.map((statsSection) => {
+                ${(UI.sections || []).map((statsSection) => {
                   return html`
                     <section class="analytics analytics--${statsSection.id}">
                       ${statsSection.menuName !== "" &&
