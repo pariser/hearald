@@ -269,7 +269,7 @@ class App extends Component {
                     !chartData.loading &&
                     html`
                       <div class="bar-chart__scale">${chartData.max}</div>
-                      ${chartData.data.map(
+                      ${(chartData.data || []).map(
                         (v) =>
                           html`
                             <div
@@ -288,15 +288,15 @@ class App extends Component {
                   </div>
                 </section>
                 ${(UI.sections || []).map((statsSection) => {
+                  const sectionTitle =
+                    statsSection.menuName ?? statsSection.title ?? "";
                   return html`
                     <section class="analytics analytics--${statsSection.id}">
-                      ${statsSection.menuName !== "" &&
+                      ${sectionTitle !== "" &&
                       html`
-                        <h2 class="analytics__title">
-                          ${statsSection.menuName}
-                        </h2>
+                        <h2 class="analytics__title">${sectionTitle}</h2>
                       `}
-                      ${statsSection.stats.map((f) => {
+                      ${(statsSection.stats || statsSection.fields || []).map((f) => {
                         return html`
                           <${Tile}
                             title="${f.label}"
