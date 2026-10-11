@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-11
+
+### Fixed
+
+- The dashboard crashed (`Cannot read properties of undefined (reading 'map')`) on a `ui` layout written
+  the way the README showed it, `{ title, fields }`. Sections now accept `title` or `menuName` and
+  `fields` or `stats`, and a section with neither renders empty.
+
+### Changed
+
+- The README now documents the `ui` layout (sections, tiles, `chartContexts`).
+
 ## [0.1.1] - 2026-10-09
 
 ### Fixed
