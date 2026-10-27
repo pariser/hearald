@@ -166,3 +166,22 @@ test("a layout that fails to load leaves the page usable", async () => {
     window.fetch = realFetch;
   }
 });
+
+test("a layout written the way the README shows it ({ title, fields }) renders its tiles", async () => {
+  await serve({
+    ...statDefinitions,
+    ui: { sections: [{ title: "People", fields: [{ label: "App opens", key: "all.opens", type: "number" }] }] },
+  });
+  mount();
+  await waitFor(() => /People/.test(text()), "the section title");
+  assert.strictEqual(container.querySelectorAll(".analytics__tile").length, 1);
+  noErrors();
+});
+
+test("a section with neither stats nor fields renders empty instead of crashing", async () => {
+  await serve({ ...statDefinitions, ui: { sections: [{ id: "empty", menuName: "Empty" }] } });
+  mount();
+  await waitFor(() => /Empty/.test(text()), "the section title");
+  assert.strictEqual(container.querySelectorAll(".analytics__tile").length, 0);
+  noErrors();
+});

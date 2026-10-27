@@ -483,7 +483,7 @@
                     !chartData.loading &&
                     m`
                       <div class="bar-chart__scale">${chartData.max}</div>
-                      ${chartData.data.map(
+                      ${(chartData.data || []).map(
                         (v) =>
                           m`
                             <div
@@ -502,15 +502,15 @@
                   </div>
                 </section>
                 ${(UI.sections || []).map((statsSection) => {
+                  const sectionTitle =
+                    statsSection.menuName ?? statsSection.title ?? "";
                   return m`
                     <section class="analytics analytics--${statsSection.id}">
-                      ${statsSection.menuName !== "" &&
+                      ${sectionTitle !== "" &&
                       m`
-                        <h2 class="analytics__title">
-                          ${statsSection.menuName}
-                        </h2>
+                        <h2 class="analytics__title">${sectionTitle}</h2>
                       `}
-                      ${statsSection.stats.map((f) => {
+                      ${(statsSection.stats || statsSection.fields || []).map((f) => {
                         return m`
                           <${Tile}
                             title="${f.label}"

@@ -113,6 +113,11 @@ const statDefinitions = {
 };
 ```
 
+`ui` sets the dashboard layout. Each section has a `title` (or `menuName`; `""` for no heading) and a
+list of tiles in `fields` (or `stats`); a tile is `{ key, label, type }` with `type` one of `number`,
+`percent` or `histogram`, and an optional `span`. `chartContexts` (`[{ id, menuName }]`) fills the chart's
+"Context" menu. Both are optional; a dashboard with no `ui` shows only the chart.
+
 Names with dots become nested objects in the result. `hidden: true` leaves a metric out of the output
 (useful for sets that only feed a computed metric). A computed metric that names a formula that does
 not exist is an error; one whose inputs are missing is simply left out.
