@@ -11,13 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The dashboard chart and its Field menu disagreed when the app has no `users` field: the menu showed
-  the first field while the chart drew an empty `users`, and choosing that field did nothing. Once the
-  stats load, a chart field or context that does not exist is replaced by the first available one
-  (`users` / `all` are still preferred when they exist).
-- The dashboard's default date was the browser's UTC date, so in a Pacific evening the window ended on
-  tomorrow with an empty last day. It now defaults to the Pacific calendar day (daylight saving
-  included), matching the server's day buckets.
+- Fix the dashboard chart's initial loading state when the app does not have a `users` field.
+- Fix the dashboard's timezone to match the server's daily bucketing (Pacific time).
 
 ## [0.1.2] - 2026-10-26
 
