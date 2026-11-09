@@ -7,6 +7,36 @@
 
   var m=e.bind(_);
 
+  // A Date whose UTC fields hold the current Pacific wall-clock time, so `iso()` (which reads UTC
+  // fields) names the Pacific day. The instant it represents is not "now"; it is only for day buckets.
+  const nowAsPstDate = (now = new Date()) => {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        hourCycle: "h23",
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+        hour: "numeric",
+        minute: "numeric",
+        second: "numeric",
+      })
+        .formatToParts(now)
+        .map((p) => [p.type, p.value])
+    );
+    return new Date(
+      Date.UTC(
+        Number(parts.year),
+        Number(parts.month) - 1,
+        Number(parts.day),
+        Number(parts.hour),
+        Number(parts.minute),
+        Number(parts.second),
+        now.getMilliseconds()
+      )
+    );
+  };
+
   function iso(time) {
     return [
       time.getUTCFullYear(),
@@ -14,6 +44,10 @@
       time.getUTCDate().toString().padStart(2, "0"),
     ].join("-");
   }
+
+  // Today's calendar date in Pacific time as YYYY-MM-DD (daylight saving included), the same day
+  // buckets the server uses. The dashboard page defaults its date to this, not the browser's UTC date.
+  const pacificToday = (now = new Date()) => iso(nowAsPstDate(now));
 
   /* START methods for fetching data from the server */
 
@@ -86,6 +120,18 @@
   }
 
   /* END methods for fetching data from the server */
+
+  // Keeps the preferred chart field/context when they exist, otherwise falls back to the first
+  // available one, so the menus (which show the first option when nothing matches) and the chart agree.
+  function resolveChartDefaults({ chartField, chartContext, stats, contexts }) {
+    const fields = Object.keys(stats?.metrics?.all || {});
+    const contextIds = (contexts || []).map((c) => c.id);
+    return {
+      chartField: fields.length && !fields.includes(chartField) ? fields[0] : chartField,
+      chartContext:
+        contextIds.length && !contextIds.includes(chartContext) ? contextIds[0] : chartContext,
+    };
+  }
 
   /* START helper methods */
 
@@ -224,8 +270,6 @@
     }
   }
 
-  const DATE = new Date().toISOString().split("T")[0];
-
   const Logo = () => m`
   <svg
     width="256"
@@ -305,7 +349,7 @@
       super(props);
       this.state = {
         numDays: 30,
-        date: DATE,
+        date: pacificToday(),
         chartField: "users",
         chartContext: "all",
         uiSectionsLoaded: false,
@@ -315,25 +359,22 @@
     async componentDidMount() {
       await fetchUI();
       this.setState({ uiSectionsLoaded: true });
-      fetchData({
+      // The chart waits for the stats so its field and context can be checked against them.
+      let stats = null;
+      await fetchData({
         numDays: this.state.numDays,
         date: this.state.date,
         getDataFn,
-        onLoadComplete: (stats) => this.setState({ stats }),
+        onLoadComplete: (s) => (stats = s),
       });
-      fetchChartData({
-        numDays: this.state.numDays,
-        date: this.state.date,
-        chartContext: this.state.chartContext,
+      const { chartField, chartContext } = resolveChartDefaults({
         chartField: this.state.chartField,
-        getDataFn,
-        onLoadProgress: (i, n) => {
-          this.setState({ chartData: { loading: { max: n, value: i } } });
-        },
-        onLoadComplete: (data, max) => {
-          this.setState({ chartData: { loading: false, data, max } });
-        },
+        chartContext: this.state.chartContext,
+        stats,
+        contexts: UI.chartContexts,
       });
+      this.setState({ stats, chartField, chartContext });
+      this.fetchChartData({ chartField, chartContext });
     }
 
     async fetchChartData({ numDays, date, chartContext, chartField }) {
