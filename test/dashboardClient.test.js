@@ -43,3 +43,16 @@ test("fetchChartData treats an unknown chart context as no data", async () => {
   });
   assert.deepStrictEqual(data.map((d) => d.value), [0, 0, 0]);
 });
+
+test("resolveChartDefaults keeps defaults that exist and otherwise takes the first available", async () => {
+  const { resolveChartDefaults } = await import("../src/public/js/util.js");
+  const stats = (all) => ({ metrics: { all } });
+  const contexts = [{ id: "web" }, { id: "all" }];
+  const pick = (o) => resolveChartDefaults({ chartField: "users", chartContext: "all", contexts, ...o });
+  assert.deepStrictEqual(pick({ stats: stats({ visits: 1, users: 2 }) }), { chartField: "users", chartContext: "all" });
+  assert.deepStrictEqual(pick({ stats: stats({ visits: 1, boards: 2 }) }), { chartField: "visits", chartContext: "all" });
+  assert.deepStrictEqual(pick({ stats: stats({ users: 1 }), contexts: [{ id: "web" }] }), { chartField: "users", chartContext: "web" });
+  // nothing to choose from: leave the state alone
+  assert.deepStrictEqual(pick({ stats: { metrics: {} }, contexts: [] }), { chartField: "users", chartContext: "all" });
+  assert.deepStrictEqual(pick({ stats: null, contexts: undefined }), { chartField: "users", chartContext: "all" });
+});

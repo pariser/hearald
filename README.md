@@ -117,6 +117,8 @@ const statDefinitions = {
 list of tiles in `fields` (or `stats`); a tile is `{ key, label, type }` with `type` one of `number`,
 `percent` or `histogram`, and an optional `span`. `chartContexts` (`[{ id, menuName }]`) fills the chart's
 "Context" menu. Both are optional; a dashboard with no `ui` shows only the chart.
+The chart starts on the `users` field and the `all` context when the app has them, otherwise on the
+first field and the first `chartContexts` entry. The page's date defaults to today in Pacific time.
 
 Names with dots become nested objects in the result. `hidden: true` leaves a metric out of the output
 (useful for sets that only feed a computed metric). A computed metric that names a formula that does

@@ -7,10 +7,10 @@ import {
   getData,
   fetchChartData,
   fetchData,
+  resolveChartDefaults,
 } from "./util.js";
 import Tile from "./Tile.js";
-
-const DATE = new Date().toISOString().split("T")[0];
+import { pacificToday } from "../../shared/utils.js";
 
 const Logo = () => html`
   <svg
@@ -91,7 +91,7 @@ class App extends Component {
     super(props);
     this.state = {
       numDays: 30,
-      date: DATE,
+      date: pacificToday(),
       chartField: "users",
       chartContext: "all",
       uiSectionsLoaded: false,
@@ -101,25 +101,22 @@ class App extends Component {
   async componentDidMount() {
     await fetchUI();
     this.setState({ uiSectionsLoaded: true });
-    fetchData({
+    // The chart waits for the stats so its field and context can be checked against them.
+    let stats = null;
+    await fetchData({
       numDays: this.state.numDays,
       date: this.state.date,
       getDataFn,
-      onLoadComplete: (stats) => this.setState({ stats }),
+      onLoadComplete: (s) => (stats = s),
     });
-    fetchChartData({
-      numDays: this.state.numDays,
-      date: this.state.date,
-      chartContext: this.state.chartContext,
+    const { chartField, chartContext } = resolveChartDefaults({
       chartField: this.state.chartField,
-      getDataFn,
-      onLoadProgress: (i, n) => {
-        this.setState({ chartData: { loading: { max: n, value: i } } });
-      },
-      onLoadComplete: (data, max) => {
-        this.setState({ chartData: { loading: false, data, max } });
-      },
+      chartContext: this.state.chartContext,
+      stats,
+      contexts: UI.chartContexts,
     });
+    this.setState({ stats, chartField, chartContext });
+    this.fetchChartData({ chartField, chartContext });
   }
 
   async fetchChartData({ numDays, date, chartContext, chartField }) {

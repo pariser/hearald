@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-08
+
+### Fixed
+
+- Fix the dashboard chart's initial loading state when the app does not have a `users` field.
+- Fix the dashboard's timezone to match the server's daily bucketing (Pacific time).
+
 ## [0.1.2] - 2026-10-26
 
 ### Fixed
