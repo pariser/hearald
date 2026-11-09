@@ -72,6 +72,18 @@ export async function fetchData({
 
 /* END methods for fetching data from the server */
 
+// Keeps the preferred chart field/context when they exist, otherwise falls back to the first
+// available one, so the menus (which show the first option when nothing matches) and the chart agree.
+export function resolveChartDefaults({ chartField, chartContext, stats, contexts }) {
+  const fields = Object.keys(stats?.metrics?.all || {});
+  const contextIds = (contexts || []).map((c) => c.id);
+  return {
+    chartField: fields.length && !fields.includes(chartField) ? fields[0] : chartField,
+    chartContext:
+      contextIds.length && !contextIds.includes(chartContext) ? contextIds[0] : chartContext,
+  };
+}
+
 /* START helper methods */
 
 export const getJson = async (url) => {

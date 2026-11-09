@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert";
-import { iso, nowAsPstDate, defaultEndDate, omitProperties } from "../src/shared/utils.js";
+import { iso, nowAsPstDate, defaultEndDate, omitProperties, pacificToday } from "../src/shared/utils.js";
 
 const pacific = (utcIso) => nowAsPstDate(new Date(utcIso)).toISOString().replace(".000Z", "Z");
 
@@ -83,4 +83,17 @@ test("defaultEndDate gives the same day in any server time zone, also across day
     if (original === undefined) delete process.env.TZ;
     else process.env.TZ = original;
   }
+});
+
+test("pacificToday is the Pacific calendar day", () => {
+  // Pacific evening: UTC is already tomorrow
+  assert.strictEqual(pacificToday(new Date("2026-07-02T05:00:00Z")), "2026-07-01");
+  assert.strictEqual(pacificToday(new Date("2026-12-02T07:59:59Z")), "2026-12-01");
+  assert.strictEqual(pacificToday(new Date("2026-12-02T08:00:00Z")), "2026-12-02");
+  // daylight saving: 2026-03-08 spring forward at 10:00 UTC, 2026-11-01 fall back at 09:00 UTC
+  assert.strictEqual(pacificToday(new Date("2026-03-09T06:59:59Z")), "2026-03-08"); // 23:59 PDT
+  assert.strictEqual(pacificToday(new Date("2026-03-09T07:00:00Z")), "2026-03-09");
+  assert.strictEqual(pacificToday(new Date("2026-11-02T07:59:59Z")), "2026-11-01"); // 23:59 PST
+  assert.strictEqual(pacificToday(new Date("2026-11-02T08:00:00Z")), "2026-11-02");
+  assert.match(pacificToday(), /^\d{4}-\d{2}-\d{2}$/);
 });

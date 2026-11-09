@@ -65,3 +65,7 @@ export function defaultEndDate(now = nowAsPstDate()) {
   yesterday.setUTCHours(0, 0, 0, 0);
   return yesterday;
 }
+
+// Today's calendar date in Pacific time as YYYY-MM-DD (daylight saving included), the same day
+// buckets the server uses. The dashboard page defaults its date to this, not the browser's UTC date.
+export const pacificToday = (now = new Date()) => iso(nowAsPstDate(now));

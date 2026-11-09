@@ -114,18 +114,19 @@ test("with events, the dashboard shows the counts, the chart and the menus", asy
   assert.ok(tiles.some((t) => /App opens\s*3/.test(t)), `App opens tile in ${JSON.stringify(tiles)}`);
   assert.ok(tiles.some((t) => /Signups\s*1/.test(t)), `Signups tile in ${JSON.stringify(tiles)}`);
 
-  // The chart loads one request per day, then draws a bar each (30 by default). It starts on the
-  // "users" field, which this app does not define, so every bar is 0 until the field is changed.
+  // The chart loads one request per day, then draws a bar each (30 by default). "users" is not a
+  // field of this app, so the chart starts on the first one ("opens"), the one the menu shows.
   const bars = () => container.querySelectorAll(".bar-chart__bar").length;
   const barValues = () => [...container.querySelectorAll(".bar-chart__bar__label b")].map((b) => b.textContent.trim());
-  await waitFor(() => bars() === 30, "30 bars");
-  assert.ok(barValues().every((v) => v === "0"));
-
   const field = container.querySelector("select[name=field]");
-  field.value = "opens";
-  field.dispatchEvent(new window.Event("change", { bubbles: true }));
-  await waitFor(() => bars() === 30 && barValues().includes("3"), "the opens chart"); // cached, so quick
+  assert.strictEqual(field.value, "opens");
+  await waitFor(() => bars() === 30 && barValues().includes("3"), "the opens chart");
   assert.deepStrictEqual(barValues().filter((v) => v !== "0"), ["3"], "only the day with events is above 0");
+
+  field.value = "signups";
+  field.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await waitFor(() => bars() === 30 && barValues().includes("1"), "the signups chart");
+  assert.deepStrictEqual(barValues().filter((v) => v !== "0"), ["1"]);
 
   const context = [...container.querySelectorAll("select[name=context] option")].map((o) => o.textContent.trim());
   assert.deepStrictEqual(context, ["All users"]);
@@ -184,4 +185,51 @@ test("a section with neither stats nor fields renders empty instead of crashing"
   await waitFor(() => /Empty/.test(text()), "the section title");
   assert.strictEqual(container.querySelectorAll(".analytics__tile").length, 0);
   noErrors();
+});
+
+test("the chart keeps the preferred defaults (users, all) when the app defines them", async () => {
+  await serve({
+    raw_metrics: { "all.users": { aggregator: "set_of_users", event: "app_open" }, "all.opens": { aggregator: "count", event: "app_open" } },
+    computed_metrics: { "all.users": { formula: "set_count", metrics: ["all.users"] } },
+    ui: { chartContexts: [{ id: "other", menuName: "Other" }, { id: "all", menuName: "All" }], sections: [] },
+  }, { events: [{ e: "app_open", u: "a", p: {} }] });
+  mount();
+  await waitFor(() => container.querySelector("select[name=field] option"), "the chart menus");
+  assert.strictEqual(container.querySelector("select[name=field]").value, "users");
+  assert.strictEqual(container.querySelector("select[name=context]").value, "all");
+  noErrors();
+});
+
+test("the chart context falls back to the first one when there is no 'all'", async () => {
+  await serve({
+    ...statDefinitions,
+    ui: { chartContexts: [{ id: "web", menuName: "Web" }, { id: "ios", menuName: "iOS" }], sections: [] },
+  });
+  mount();
+  await waitFor(() => container.querySelector("select[name=context] option"), "the chart menus");
+  assert.strictEqual(container.querySelector("select[name=context]").value, "web");
+  noErrors();
+});
+
+test("the date defaults to the Pacific day, not the browser's UTC day", async () => {
+  const RealDate = Date;
+  // 2026-07-01 22:00 PDT is already 2026-07-02 05:00 UTC
+  const fixed = RealDate.parse("2026-07-02T05:00:00Z");
+  globalThis.Date = class extends RealDate {
+    constructor(...args) {
+      super(...(args.length ? args : [fixed]));
+    }
+    static now() {
+      return fixed;
+    }
+  };
+  try {
+    await serve();
+    mount();
+    await waitFor(() => container.querySelector(".analytics__header__input"), "the header");
+    const [, dateInput] = container.querySelectorAll(".analytics__header__input");
+    assert.strictEqual(dateInput.value, "2026-07-01");
+  } finally {
+    globalThis.Date = RealDate;
+  }
 });
